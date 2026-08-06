@@ -1,0 +1,111 @@
+const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3001';
+
+export type AuthUser = {
+  id: string;
+  email: string;
+  displayName: string | null;
+  avatarUrl: string | null;
+  subscriptionTier: string;
+  googleId: string | null;
+  emailVerified: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AuthTokens = {
+  accessToken: string;
+  refreshToken: string;
+};
+
+export type AuthResponse = AuthTokens & {
+  user: AuthUser;
+};
+
+export class ApiError extends Error {
+  status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+    this.name = 'ApiError';
+  }
+}
+
+async function parseError(response: Response): Promise<ApiError> {
+  let message = `Request failed (${response.status})`;
+  try {
+    const data = (await response.json()) as { error?: string };
+    if (data?.error) {
+      message = data.error;
+    }
+  } catch {
+    // ignore JSON parse errors
+  }
+  return new ApiError(response.status, message);
+}
+
+async function request<T>(
+  path: string,
+  options: RequestInit = {},
+  accessToken?: string
+): Promise<T> {
+  const headers = new Headers(options.headers);
+  headers.set('Content-Type', 'application/json');
+  if (accessToken) {
+    headers.set('Authorization', `Bearer ${accessToken}`);
+  }
+
+  const response = await fetch(`${API_URL}${path}`, {
+    ...options,
+    headers,
+  });
+
+  if (!response.ok) {
+    throw await parseError(response);
+  }
+
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
+  return (await response.json()) as T;
+}
+
+export function getApiUrl(): string {
+  return API_URL;
+}
+
+export async function register(
+  email: string,
+  password: string
+): Promise<{ user: AuthUser }> {
+  return request<{ user: AuthUser }>('/api/auth/register', {
+    method: 'POST',
+    body: JSON.stringify({ email, password }),
+  });
+}
+
+export async function login(email: string, password: string): Promise<AuthResponse> {
+  return request<AuthResponse>('/api/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ email, password }),
+  });
+}
+
+export async function refreshToken(token: string): Promise<AuthTokens> {
+  return request<AuthTokens>('/api/auth/refresh', {
+    method: 'POST',
+    body: JSON.stringify({ refreshToken: token }),
+  });
+}
+
+export async function logout(token: string): Promise<{ success: boolean }> {
+  return request<{ success: boolean }>('/api/auth/logout', {
+    method: 'POST',
+    body: JSON.stringify({ refreshToken: token }),
+  });
+}
+
+export async function getMe(accessToken: string): Promise<{ user: AuthUser }> {
+  return request<{ user: AuthUser }>('/api/auth/me', { method: 'GET' }, accessToken);
+}

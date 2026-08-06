@@ -1,7 +1,13 @@
-import express from "express";
-import helmet from "helmet";
-import cors from "cors";
-import rateLimit from "express-rate-limit";
+import './config/env';
+
+import express from 'express';
+import helmet from 'helmet';
+import cors from 'cors';
+import cookieParser from 'cookie-parser';
+import rateLimit from 'express-rate-limit';
+import { databaseReady, verifyDatabaseConnection } from './config/database';
+import { connectRedis, redisReady } from './config/redis';
+import authRoutes from './routes/auth';
 
 const app = express();
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3001;
@@ -15,15 +21,38 @@ app.use(
   })
 );
 app.use(express.json());
+app.use(cookieParser());
 
-app.get("/health", (_req, res) => {
-  res.json({ status: "ok", timestamp: new Date().toISOString() });
+app.get('/health', (_req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-app.get("/readyz", (_req, res) => {
-  res.json({ status: "ready" });
+app.get('/readyz', (_req, res) => {
+  if (!databaseReady || !redisReady) {
+    res.status(503).json({
+      status: 'not_ready',
+      database: databaseReady,
+      redis: redisReady,
+    });
+    return;
+  }
+  res.json({ status: 'ready', database: true, redis: true });
 });
 
-app.listen(PORT, () => {
-  console.log(`GEXIS API listening on port ${PORT}`);
+app.use('/api/auth', authRoutes);
+
+async function start(): Promise<void> {
+  const dbOk = await verifyDatabaseConnection();
+  const redisOk = await connectRedis();
+
+  app.listen(PORT, () => {
+    console.log(`GEXIS API listening on port ${PORT}`);
+    console.log(`[startup] Database connection: ${dbOk ? 'OK' : 'FAILED'}`);
+    console.log(`[startup] Redis connection: ${redisOk ? 'OK' : 'FAILED'}`);
+  });
+}
+
+start().catch((err) => {
+  console.error('[startup] Failed to start server:', err);
+  process.exit(1);
 });

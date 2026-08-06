@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "dotenv": "^16.4.0",
+    "node-pg-migrate": "^9.0.0",
     "pg": "^8.13.0"
   },
   "devDependencies": {

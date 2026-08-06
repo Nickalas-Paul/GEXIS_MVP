@@ -1,6 +1,8 @@
 import { Link } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { useAuth } from '@/services/auth';
+
 const LINKS = [
   { href: '/explorer' as const, label: 'Product' },
   { href: '/marketplace' as const, label: 'Marketplace' },
@@ -9,6 +11,8 @@ const LINKS = [
 ];
 
 export function MarketingNav() {
+  const { isAuthenticated, user, isLoading } = useAuth();
+
   return (
     <View style={styles.nav}>
       <Link href="/" asChild>
@@ -26,10 +30,31 @@ export function MarketingNav() {
         ))}
       </View>
       <View style={styles.actions}>
-        <Text style={styles.linkText}>Log in</Text>
-        <Pressable style={styles.cta}>
-          <Text style={styles.ctaText}>Start free</Text>
-        </Pressable>
+        {!isLoading && isAuthenticated ? (
+          <>
+            <Text style={styles.userLabel} numberOfLines={1}>
+              {user?.email}
+            </Text>
+            <Link href="/explorer" asChild>
+              <Pressable style={styles.cta}>
+                <Text style={styles.ctaText}>Go to Explorer</Text>
+              </Pressable>
+            </Link>
+          </>
+        ) : (
+          <>
+            <Link href="/login" asChild>
+              <Pressable>
+                <Text style={styles.linkText}>Log in</Text>
+              </Pressable>
+            </Link>
+            <Link href="/register" asChild>
+              <Pressable style={styles.cta}>
+                <Text style={styles.ctaText}>Start free</Text>
+              </Pressable>
+            </Link>
+          </>
+        )}
       </View>
     </View>
   );
@@ -68,6 +93,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 16,
+  },
+  userLabel: {
+    fontSize: 13,
+    opacity: 0.7,
+    maxWidth: 180,
   },
   cta: {
     backgroundColor: '#1a1a1a',
