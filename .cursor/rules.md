@@ -25,3 +25,9 @@
 - Python for data ingestion workers only
 - OpenAPI spec maintained from day one
 - All environment variables documented in .env.example
+
+## Encoding
+- All source files are UTF-8, LF line endings, no BOM
+- Never use curly quotes, em dashes, or non-ASCII punctuation in source code or string literals
+- If a file has encoding corruption, delete and recreate it - do not attempt in-place repair
+- PowerShell terminal: when running commands that output to files, pipe through Out-File -Encoding utf8 or use [System.IO.File]::WriteAllText with UTF8 encoding

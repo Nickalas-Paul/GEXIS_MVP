@@ -13,7 +13,13 @@
     "test": "turbo run test"
   },
   "devDependencies": {
-    "turbo": "latest"
+    "expo": "~56.0.19",
+    "turbo": "latest",
+    "typescript": "5.9.3"
   },
-  "packageManager": "npm@10.9.2"
+  "packageManager": "npm@10.9.2",
+  "overrides": {
+    "mapbox-gl": "3.20.0",
+    "typescript": "5.9.3"
+  }
 }

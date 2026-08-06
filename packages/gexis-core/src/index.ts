@@ -21,3 +21,9 @@ export interface MVIScore {
 }
 
 export const MVI_VERSION = "0.1.0";
+
+export {
+  DEFAULT_MAP_STYLE,
+  DEFAULT_MAP_VIEWPORT,
+  type MapViewport,
+} from "./mapConfig";
