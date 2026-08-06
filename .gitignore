@@ -1,0 +1,13 @@
+node_modules
+dist
+.turbo
+.env
+.env.local
+.expo
+__pycache__
+*.pyc
+.venv
+*.log
+coverage
+.DS_Store
+*.tsbuildinfo

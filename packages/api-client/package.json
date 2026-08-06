@@ -1,0 +1,18 @@
+{
+  "name": "@gexis/api-client",
+  "version": "0.1.0",
+  "private": true,
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "build": "tsc",
+    "lint": "echo \"No lint configured\"",
+    "test": "echo \"No tests yet\""
+  },
+  "dependencies": {
+    "@gexis/gexis-core": "*"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  }
+}

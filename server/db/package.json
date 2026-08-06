@@ -1,0 +1,17 @@
+{
+  "name": "gexis-db",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "echo \"No build step for db package yet\"",
+    "lint": "echo \"No lint configured\"",
+    "test": "echo \"No tests yet\""
+  },
+  "dependencies": {
+    "dotenv": "^16.4.0",
+    "pg": "^8.13.0"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.11.0"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "name": "universal",
+  "private": true,
+  "scripts": {
+    "dev": "echo \"Expo not yet configured\"",
+    "build": "echo \"Expo not yet configured\"",
+    "lint": "echo \"No lint configured\""
+  }
+}
