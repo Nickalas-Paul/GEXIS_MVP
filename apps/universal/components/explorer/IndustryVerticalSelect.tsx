@@ -147,6 +147,8 @@ const styles = StyleSheet.create({
   wrap: {
     marginTop: 8,
     zIndex: 30,
+    elevation: 30,
+    position: 'relative',
   },
   trigger: {
     flexDirection: 'row',
@@ -176,6 +178,16 @@ const styles = StyleSheet.create({
     borderColor: '#2a2a3e',
     borderRadius: 8,
     overflow: 'hidden',
+    ...(Platform.OS !== 'web'
+      ? {
+          position: 'absolute' as const,
+          left: 0,
+          right: 0,
+          top: '100%' as const,
+          zIndex: 100,
+          elevation: 100,
+        }
+      : null),
   },
   search: {
     borderBottomWidth: 1,

@@ -56,7 +56,8 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderColor: '#1c1c2a',
     maxHeight: '85%',
-    overflow: 'hidden',
+    // Allow nested dropdowns (industry vertical) to paint above sheet chrome
+    overflow: 'visible',
   },
   handleRow: {
     alignItems: 'center',
@@ -88,5 +89,6 @@ const styles = StyleSheet.create({
   },
   body: {
     flex: 1,
+    overflow: 'visible',
   },
 });

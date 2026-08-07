@@ -15,7 +15,6 @@ import {
   formatPopulation,
   type ExplorerFilterState,
 } from '@/lib/explorerFilters';
-import { verticalLabel } from '@/lib/industryVerticals';
 
 import IndustryVerticalSelect from './IndustryVerticalSelect';
 
@@ -123,18 +122,12 @@ export default function FilterSidebar({ filters, onChange, onReset, style }: Pro
         </Pressable>
       </View>
 
-      <View style={styles.row}>
+      <View style={[styles.row, styles.verticalRow]}>
         <Text style={styles.rowLabel}>Industry Vertical</Text>
-        {Platform.OS === 'web' ? (
-          <IndustryVerticalSelect
-            value={filters.industryVertical}
-            onChange={(industryVertical) => onChange({ industryVertical })}
-          />
-        ) : (
-          <Text style={styles.staticValue}>
-            {verticalLabel(filters.industryVertical)}
-          </Text>
-        )}
+        <IndustryVerticalSelect
+          value={filters.industryVertical}
+          onChange={(industryVertical) => onChange({ industryVertical })}
+        />
       </View>
 
       <FilterRow
@@ -242,6 +235,10 @@ const styles = StyleSheet.create({
   row: {
     gap: 8,
   },
+  verticalRow: {
+    zIndex: 40,
+    elevation: 40,
+  },
   rowHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -256,11 +253,6 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.55)',
     fontSize: 12,
     fontWeight: '600',
-  },
-  staticValue: {
-    color: 'rgba(255,255,255,0.65)',
-    fontSize: 13,
-    marginTop: 6,
   },
   sliderTrackWrap: {
     height: 28,

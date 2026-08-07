@@ -273,7 +273,12 @@ export default function ExplorerScreen() {
               </Text>
             </Pressable>
           </View>
-          <ScrollView style={styles.mobileSheetScroll}>
+          <ScrollView
+            style={styles.mobileSheetScroll}
+            contentContainerStyle={styles.mobileSheetScrollContent}
+            keyboardShouldPersistTaps="handled"
+            nestedScrollEnabled
+          >
             {mobileTab === 'filters' ? (
               <FilterSidebar
                 filters={filters}
@@ -427,6 +432,10 @@ const styles = StyleSheet.create({
   },
   mobileSheetScroll: {
     flex: 1,
+  },
+  mobileSheetScrollContent: {
+    paddingBottom: 24,
+    flexGrow: 1,
   },
   mobileFilters: {
     width: '100%',
