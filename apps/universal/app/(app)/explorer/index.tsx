@@ -12,12 +12,16 @@ import Map from '@/components/Map';
 import DataFreshnessPill from '@/components/explorer/DataFreshnessPill';
 import FilterSidebar from '@/components/explorer/FilterSidebar';
 import GeographyDrillDown from '@/components/explorer/GeographyDrillDown';
+import GeographySearch, {
+  type SearchResult,
+} from '@/components/explorer/GeographySearch';
 import MviLegend from '@/components/explorer/MviLegend';
 import TopMatchesList from '@/components/explorer/TopMatchesList';
 import type { MapFlyToTarget } from '@/components/Map.types';
 import { useExplorerFilters } from '@/hooks/useExplorerFilters';
 import {
   fetchGeographiesGeojson,
+  geometryCentroid,
   type GeographyFeatureCollection,
   type GeographyFeatureProperties,
   type GeographyListItem,
@@ -120,6 +124,21 @@ export default function ExplorerScreen() {
     [selectGeography]
   );
 
+  const onSearchSelect = useCallback(
+    (result: SearchResult) => {
+      const feature = geojson?.features.find(
+        (f) => f.properties?.id === result.id || f.properties?.isoCode === result.isoCode
+      );
+      const centroid = feature ? geometryCentroid(feature.geometry) : null;
+      selectGeography({
+        idOrIso: result.isoCode ?? result.id,
+        isoCode: result.isoCode,
+        centroid,
+      });
+    },
+    [geojson, selectGeography]
+  );
+
   const showFilters = Platform.OS === 'web' && isDesktop;
   const showDrillDown = Platform.OS === 'web' && isDesktop && selectedKey != null;
 
@@ -152,6 +171,9 @@ export default function ExplorerScreen() {
 
         {Platform.OS === 'web' ? (
           <>
+            <View style={styles.searchWrap} pointerEvents="box-none">
+              <GeographySearch geojson={geojson} onSelect={onSearchSelect} />
+            </View>
             <View style={styles.topRight} pointerEvents="box-none">
               <DataFreshnessPill dateLabel={dataLabel} />
               {filtering ? (
@@ -209,6 +231,15 @@ const styles = StyleSheet.create({
   mapPane: {
     flex: 1,
     position: 'relative',
+  },
+  searchWrap: {
+    position: 'absolute',
+    top: 16,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    zIndex: 5,
   },
   topRight: {
     position: 'absolute',
