@@ -88,10 +88,10 @@ export default function GeographyDrillDown({
 
   return (
     <View
-      style={[
+      style={StyleSheet.flatten([
         variant === 'panel' ? styles.panel : styles.sheet,
         style,
-      ]}
+      ])}
     >
       <View style={styles.headerRow}>
         <View style={{ flex: 1 }}>
@@ -168,7 +168,12 @@ export default function GeographyDrillDown({
               </Pressable>
             </Link>
             <Link href={`/explorer/${geoKey}/agents`} asChild>
-              <Pressable style={[styles.actionBtn, styles.actionBtnSecondary]}>
+              <Pressable
+                style={StyleSheet.flatten([
+                  styles.actionBtn,
+                  styles.actionBtnSecondary,
+                ])}
+              >
                 <Text style={styles.actionTextSecondary}>View agents →</Text>
               </Pressable>
             </Link>
