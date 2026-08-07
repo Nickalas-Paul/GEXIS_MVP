@@ -1,5 +1,12 @@
 import type { ReactNode } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  Modal,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 
 type Props = {
   visible: boolean;
@@ -9,6 +16,10 @@ type Props = {
   height?: number | `${number}%`;
 };
 
+/**
+ * Custom bottom sheet. On native, render inside a Modal so touches are not
+ * stolen by Mapbox's native MapView (RN zIndex cannot cover native map views).
+ */
 export default function BottomSheet({
   visible,
   onClose,
@@ -16,12 +27,18 @@ export default function BottomSheet({
   children,
   height = '72%',
 }: Props) {
-  if (!visible) return null;
-
-  return (
+  const sheet = (
     <View style={styles.root} pointerEvents="box-none">
-      <Pressable style={styles.overlay} onPress={onClose} />
-      <View style={StyleSheet.flatten([styles.sheet, { height }])}>
+      <Pressable
+        style={styles.overlay}
+        onPress={onClose}
+        accessibilityRole="button"
+        accessibilityLabel="Close sheet"
+      />
+      <View
+        style={StyleSheet.flatten([styles.sheet, { height }])}
+        pointerEvents="auto"
+      >
         <View style={styles.handleRow}>
           <View style={styles.handle} />
         </View>
@@ -37,17 +54,36 @@ export default function BottomSheet({
       </View>
     </View>
   );
+
+  if (Platform.OS === 'web') {
+    if (!visible) return null;
+    return sheet;
+  }
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      onRequestClose={onClose}
+      statusBarTranslucent
+    >
+      {sheet}
+    </Modal>
+  );
 }
 
 const styles = StyleSheet.create({
   root: {
-    ...StyleSheet.absoluteFill,
-    zIndex: 40,
+    ...(Platform.OS === 'web'
+      ? { ...StyleSheet.absoluteFillObject, zIndex: 40 }
+      : { flex: 1 }),
     justifyContent: 'flex-end',
   },
   overlay: {
-    ...StyleSheet.absoluteFill,
+    ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.45)',
+    zIndex: 0,
   },
   sheet: {
     backgroundColor: '#0e0e16',
@@ -56,8 +92,9 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderColor: '#1c1c2a',
     maxHeight: '85%',
-    // Allow nested dropdowns (industry vertical) to paint above sheet chrome
-    overflow: 'visible',
+    zIndex: 1,
+    elevation: 12,
+    overflow: 'hidden',
   },
   handleRow: {
     alignItems: 'center',
@@ -89,6 +126,5 @@ const styles = StyleSheet.create({
   },
   body: {
     flex: 1,
-    overflow: 'visible',
   },
 });

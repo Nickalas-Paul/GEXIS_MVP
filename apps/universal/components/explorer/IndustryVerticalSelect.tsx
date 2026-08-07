@@ -87,8 +87,16 @@ export default function IndustryVerticalSelect({ value, onChange }: Props) {
   }, []);
 
   return (
-    <View ref={wrapRef} style={styles.wrap}>
-      <Pressable style={styles.trigger} onPress={() => setOpen((v) => !v)}>
+    <View ref={wrapRef} style={styles.wrap} collapsable={false}>
+      <Pressable
+        style={styles.trigger}
+        hitSlop={8}
+        onPress={() => {
+          // eslint-disable-next-line no-console
+          console.log('[Dropdown] onPress fired, open ->', !open);
+          setOpen((v) => !v);
+        }}
+      >
         <Text style={styles.triggerText} numberOfLines={1}>
           {verticalLabel(value)}
         </Text>
@@ -96,7 +104,7 @@ export default function IndustryVerticalSelect({ value, onChange }: Props) {
       </Pressable>
 
       {open ? (
-        <View style={styles.dropdown}>
+        <View style={styles.dropdown} collapsable={false}>
           <TextInput
             value={query}
             onChangeText={setQuery}
@@ -123,6 +131,8 @@ export default function IndustryVerticalSelect({ value, onChange }: Props) {
                     selected && styles.optionSelected,
                   ])}
                   onPress={() => {
+                    // eslint-disable-next-line no-console
+                    console.log('[Dropdown] option onPress:', opt.key);
                     onChange(opt.key);
                     setOpen(false);
                     setQuery('');
@@ -154,7 +164,6 @@ const styles = StyleSheet.create({
     marginTop: 8,
     zIndex: 30,
     elevation: 30,
-    position: 'relative',
   },
   trigger: {
     flexDirection: 'row',
@@ -165,7 +174,8 @@ const styles = StyleSheet.create({
     borderColor: '#2a2a3e',
     borderRadius: 6,
     paddingHorizontal: 10,
-    paddingVertical: 9,
+    paddingVertical: 12,
+    minHeight: 44,
   },
   triggerText: {
     color: '#e8e8f0',
@@ -177,6 +187,8 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.45)',
     fontSize: 12,
   },
+  // In-flow list (not absolute) so ScrollView parent layout reserves space
+  // and touches aren't clipped by siblings under an absolute overlay.
   dropdown: {
     marginTop: 6,
     backgroundColor: '#12121c',
@@ -184,16 +196,6 @@ const styles = StyleSheet.create({
     borderColor: '#2a2a3e',
     borderRadius: 8,
     overflow: 'hidden',
-    ...(Platform.OS !== 'web'
-      ? {
-          position: 'absolute' as const,
-          left: 0,
-          right: 0,
-          top: '100%' as const,
-          zIndex: 100,
-          elevation: 100,
-        }
-      : null),
   },
   search: {
     borderBottomWidth: 1,
@@ -212,7 +214,9 @@ const styles = StyleSheet.create({
   },
   option: {
     paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingVertical: 12,
+    minHeight: 44,
+    justifyContent: 'center',
   },
   optionSelected: {
     backgroundColor: 'rgba(26, 58, 110, 0.55)',
