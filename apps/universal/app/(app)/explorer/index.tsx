@@ -29,6 +29,7 @@ import {
   type GeographyFeatureProperties,
   type GeographyListItem,
 } from '@/services/geographies';
+import { getApiUrl } from '@/services/api';
 
 const DESKTOP_BREAKPOINT = 768;
 
@@ -58,15 +59,24 @@ export default function ExplorerScreen() {
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
+    const geojsonUrl = `${getApiUrl()}/api/geographies/geojson`;
+    console.log('[Explorer] Fetching GeoJSON from:', geojsonUrl);
     void fetchGeographiesGeojson(filters.industryVertical)
       .then((fc) => {
         if (!cancelled) {
+          console.log('[Explorer] GeoJSON loaded:', fc.features.length, 'features');
           setGeojson(fc);
           setLoadError(null);
         }
       })
       .catch((err: unknown) => {
         if (!cancelled) {
+          console.error(
+            '[Explorer] GeoJSON fetch failed:',
+            err,
+            'URL was:',
+            geojsonUrl
+          );
           setLoadError(err instanceof Error ? err.message : 'Failed to load geographies');
         }
       })

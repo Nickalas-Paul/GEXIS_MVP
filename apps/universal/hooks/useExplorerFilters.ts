@@ -46,7 +46,8 @@ export function useExplorerFilters() {
             )
           : null
       );
-    } catch {
+    } catch (err) {
+      console.error('[Filters] Filter API failed:', err);
       // keep previous matches on error
     } finally {
       setFiltering(false);
