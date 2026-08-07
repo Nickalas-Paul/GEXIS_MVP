@@ -1,27 +1,45 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Platform, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Platform,
+  StyleSheet,
+  Text,
+  View,
+  useWindowDimensions,
+} from 'react-native';
 
 import Map from '@/components/Map';
 import DataFreshnessPill from '@/components/explorer/DataFreshnessPill';
+import FilterSidebar from '@/components/explorer/FilterSidebar';
 import MviLegend from '@/components/explorer/MviLegend';
 import type { MapFlyToTarget } from '@/components/Map.types';
+import { useExplorerFilters } from '@/hooks/useExplorerFilters';
 import {
   fetchGeographiesGeojson,
   type GeographyFeatureCollection,
   type GeographyFeatureProperties,
 } from '@/services/geographies';
 
+const DESKTOP_BREAKPOINT = 768;
+
 export default function ExplorerScreen() {
+  const { width } = useWindowDimensions();
+  const isDesktop = width >= DESKTOP_BREAKPOINT;
+  const {
+    filters,
+    updateFilters,
+    resetFilters,
+    matchedIsoCodes,
+    filtering,
+  } = useExplorerFilters();
+
   const [geojson, setGeojson] = useState<GeographyFeatureCollection | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(Platform.OS === 'web');
   const [selected, setSelected] = useState<GeographyFeatureProperties | null>(null);
   const [flyToTarget, setFlyToTarget] = useState<MapFlyToTarget | null>(null);
 
-  const dataLabel = useMemo(() => {
-    const now = new Date();
-    return now.toISOString().slice(0, 10);
-  }, []);
+  const dataLabel = useMemo(() => new Date().toISOString().slice(0, 10), []);
 
   useEffect(() => {
     if (Platform.OS !== 'web') {
@@ -62,44 +80,60 @@ export default function ExplorerScreen() {
     []
   );
 
+  const showFilters = Platform.OS === 'web' && isDesktop;
+
   return (
     <View style={styles.container}>
-      <Map
-        geojson={Platform.OS === 'web' ? geojson : null}
-        selectedIsoCode={selected?.isoCode ?? null}
-        flyToTarget={flyToTarget}
-        onGeographyClick={onGeographyClick}
-      />
-
-      {Platform.OS === 'web' ? (
-        <>
-          <View style={styles.topRight} pointerEvents="box-none">
-            <DataFreshnessPill dateLabel={dataLabel} />
-          </View>
-          <View style={styles.legendWrap} pointerEvents="none">
-            <MviLegend />
-          </View>
-          {loading ? (
-            <View style={styles.status} pointerEvents="none">
-              <ActivityIndicator color="#ffffff" />
-              <Text style={styles.statusText}>Loading geographies…</Text>
-            </View>
-          ) : null}
-          {loadError ? (
-            <View style={styles.status} pointerEvents="none">
-              <Text style={styles.errorText}>{loadError}</Text>
-            </View>
-          ) : null}
-          {selected ? (
-            <View style={styles.selectionChip} pointerEvents="none">
-              <Text style={styles.selectionName}>{selected.name}</Text>
-              <Text style={styles.selectionScore}>
-                {selected.overall != null ? `MVI ${selected.overall}` : 'Unscored'}
-              </Text>
-            </View>
-          ) : null}
-        </>
+      {showFilters ? (
+        <FilterSidebar
+          filters={filters}
+          onChange={updateFilters}
+          onReset={resetFilters}
+        />
       ) : null}
+
+      <View style={styles.mapPane}>
+        <Map
+          geojson={Platform.OS === 'web' ? geojson : null}
+          matchedIsoCodes={Platform.OS === 'web' ? matchedIsoCodes : null}
+          selectedIsoCode={selected?.isoCode ?? null}
+          flyToTarget={flyToTarget}
+          onGeographyClick={onGeographyClick}
+        />
+
+        {Platform.OS === 'web' ? (
+          <>
+            <View style={styles.topRight} pointerEvents="box-none">
+              <DataFreshnessPill dateLabel={dataLabel} />
+              {filtering ? (
+                <Text style={styles.filteringHint}>Updating filters…</Text>
+              ) : null}
+            </View>
+            <View style={styles.legendWrap} pointerEvents="none">
+              <MviLegend />
+            </View>
+            {loading ? (
+              <View style={styles.status} pointerEvents="none">
+                <ActivityIndicator color="#ffffff" />
+                <Text style={styles.statusText}>Loading geographies…</Text>
+              </View>
+            ) : null}
+            {loadError ? (
+              <View style={styles.status} pointerEvents="none">
+                <Text style={styles.errorText}>{loadError}</Text>
+              </View>
+            ) : null}
+            {selected ? (
+              <View style={styles.selectionChip} pointerEvents="none">
+                <Text style={styles.selectionName}>{selected.name}</Text>
+                <Text style={styles.selectionScore}>
+                  {selected.overall != null ? `MVI ${selected.overall}` : 'Unscored'}
+                </Text>
+              </View>
+            ) : null}
+          </>
+        ) : null}
+      </View>
     </View>
   );
 }
@@ -107,14 +141,24 @@ export default function ExplorerScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    position: 'relative',
+    flexDirection: 'row',
     backgroundColor: '#0b0b12',
+  },
+  mapPane: {
+    flex: 1,
+    position: 'relative',
   },
   topRight: {
     position: 'absolute',
     top: 16,
     right: 16,
     zIndex: 2,
+    alignItems: 'flex-end',
+    gap: 8,
+  },
+  filteringHint: {
+    color: 'rgba(255,255,255,0.55)',
+    fontSize: 11,
   },
   legendWrap: {
     position: 'absolute',
