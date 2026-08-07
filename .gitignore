@@ -11,3 +11,6 @@ __pycache__
 coverage
 .DS_Store
 *.tsbuildinfo
+server/workers/data/
+server/workers/logs/
+

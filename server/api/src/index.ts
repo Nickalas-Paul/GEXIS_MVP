@@ -8,6 +8,8 @@ import rateLimit from 'express-rate-limit';
 import { databaseReady, verifyDatabaseConnection } from './config/database';
 import { connectRedis, redisReady } from './config/redis';
 import authRoutes from './routes/auth';
+import geographyRoutes from './routes/geographies';
+import mviRoutes from './routes/mvi';
 
 const app = express();
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3001;
@@ -17,7 +19,7 @@ app.use(cors());
 app.use(
   rateLimit({
     windowMs: 15 * 60 * 1000,
-    max: 100,
+    max: 1000,
   })
 );
 app.use(express.json());
@@ -40,6 +42,8 @@ app.get('/readyz', (_req, res) => {
 });
 
 app.use('/api/auth', authRoutes);
+app.use('/api/geographies', geographyRoutes);
+app.use('/api/mvi', mviRoutes);
 
 async function start(): Promise<void> {
   const dbOk = await verifyDatabaseConnection();
