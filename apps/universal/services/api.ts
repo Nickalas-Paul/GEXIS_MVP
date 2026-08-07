@@ -1,4 +1,44 @@
-const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3001';
+/**
+ * Resolve the API base URL for the current platform.
+ *
+ * - Prefer EXPO_PUBLIC_API_URL (set in apps/universal/.env).
+ * - On native, localhost is unreachable from a physical device — fall back to
+ *   EXPO_PUBLIC_API_URL_LAN if provided, otherwise keep the env value and warn.
+ * - On web, localhost is fine; LAN IP also works from the same machine.
+ */
+import { Platform } from 'react-native';
+
+const ENV_URL = process.env.EXPO_PUBLIC_API_URL || '';
+const ENV_LAN_URL = process.env.EXPO_PUBLIC_API_URL_LAN || '';
+
+function isLocalhost(url: string): boolean {
+  return /:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/i.test(url);
+}
+
+export function resolveApiUrl(): string {
+  const primary = ENV_URL.trim() || 'http://localhost:3001';
+
+  if (Platform.OS === 'web') {
+    return primary;
+  }
+
+  // Native: prefer non-localhost URL so physical devices can reach the API
+  if (!isLocalhost(primary)) {
+    return primary;
+  }
+  if (ENV_LAN_URL.trim()) {
+    return ENV_LAN_URL.trim();
+  }
+
+  if (__DEV__) {
+    console.warn(
+      '[api] EXPO_PUBLIC_API_URL is localhost; set a LAN IP (e.g. http://192.168.x.x:3001) for device testing.'
+    );
+  }
+  return primary;
+}
+
+const API_URL = resolveApiUrl();
 
 export type AuthUser = {
   id: string;
