@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "GEXIS",
-    "slug": "gexis-universal",
+    "slug": "gexis",
     "version": "0.1.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -14,9 +14,11 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.gexis.app"
     },
     "android": {
+      "package": "com.gexis.app",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
@@ -29,10 +31,24 @@
     },
     "plugins": [
       "expo-router",
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-dev-client",
+      [
+        "@rnmapbox/maps",
+        {
+          "RNMapboxMapsVersion": "11.20.1"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": false
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "b7bad06c-f988-4d7e-abfa-622ec49220f5"
+      }
+    },
+    "owner": "nickstersam"
   }
 }
