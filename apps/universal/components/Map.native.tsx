@@ -11,6 +11,7 @@ if (token) {
 }
 
 export default function Map({ style }: MapProps) {
+  // Choropleth / filter props are web-only (Map.web.tsx).
   if (!token) {
     return (
       <View style={[styles.fallback, style]}>
