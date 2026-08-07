@@ -21,7 +21,7 @@ export default function BottomSheet({
   return (
     <View style={styles.root} pointerEvents="box-none">
       <Pressable style={styles.overlay} onPress={onClose} />
-      <View style={[styles.sheet, { height }]}>
+      <View style={StyleSheet.flatten([styles.sheet, { height }])}>
         <View style={styles.handleRow}>
           <View style={styles.handle} />
         </View>

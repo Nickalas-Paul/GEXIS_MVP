@@ -106,7 +106,7 @@ export default function IndustryVerticalSelect({ value, onChange }: Props) {
             autoFocus={Platform.OS === 'web'}
           />
           <ScrollView
-            style={[styles.list, webScrollStyle]}
+            style={StyleSheet.flatten([styles.list, webScrollStyle])}
             contentContainerStyle={styles.listContent}
             nestedScrollEnabled
             keyboardShouldPersistTaps="handled"
@@ -118,7 +118,10 @@ export default function IndustryVerticalSelect({ value, onChange }: Props) {
               return (
                 <Pressable
                   key={opt.key}
-                  style={[styles.option, selected && styles.optionSelected]}
+                  style={StyleSheet.flatten([
+                    styles.option,
+                    selected && styles.optionSelected,
+                  ])}
                   onPress={() => {
                     onChange(opt.key);
                     setOpen(false);
@@ -126,7 +129,10 @@ export default function IndustryVerticalSelect({ value, onChange }: Props) {
                   }}
                 >
                   <Text
-                    style={[styles.optionText, selected && styles.optionTextSelected]}
+                    style={StyleSheet.flatten([
+                      styles.optionText,
+                      selected && styles.optionTextSelected,
+                    ])}
                   >
                     {opt.label}
                   </Text>

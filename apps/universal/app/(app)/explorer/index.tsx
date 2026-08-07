@@ -189,7 +189,10 @@ export default function ExplorerScreen() {
 
         <>
             <View
-              style={[styles.searchWrap, showMobileChrome && styles.searchWrapMobile]}
+              style={StyleSheet.flatten([
+                styles.searchWrap,
+                showMobileChrome && styles.searchWrapMobile,
+              ])}
               pointerEvents="box-none"
             >
               <GeographySearch geojson={geojson} onSelect={onSearchSelect} />
@@ -247,27 +250,33 @@ export default function ExplorerScreen() {
         >
           <View style={styles.mobileTabs}>
             <Pressable
-              style={[styles.mobileTab, mobileTab === 'filters' && styles.mobileTabActive]}
+              style={StyleSheet.flatten([
+                styles.mobileTab,
+                mobileTab === 'filters' && styles.mobileTabActive,
+              ])}
               onPress={() => setMobileTab('filters')}
             >
               <Text
-                style={[
+                style={StyleSheet.flatten([
                   styles.mobileTabText,
                   mobileTab === 'filters' && styles.mobileTabTextActive,
-                ]}
+                ])}
               >
                 Filters
               </Text>
             </Pressable>
             <Pressable
-              style={[styles.mobileTab, mobileTab === 'matches' && styles.mobileTabActive]}
+              style={StyleSheet.flatten([
+                styles.mobileTab,
+                mobileTab === 'matches' && styles.mobileTabActive,
+              ])}
               onPress={() => setMobileTab('matches')}
             >
               <Text
-                style={[
+                style={StyleSheet.flatten([
                   styles.mobileTabText,
                   mobileTab === 'matches' && styles.mobileTabTextActive,
-                ]}
+                ])}
               >
                 Top Matches
               </Text>

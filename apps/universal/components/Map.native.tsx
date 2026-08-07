@@ -81,7 +81,7 @@ export default function Map({
 
   if (!token) {
     return (
-      <View style={[styles.fallback, style]}>
+      <View style={StyleSheet.flatten([styles.fallback, style])}>
         <Text style={styles.fallbackTitle}>Map unavailable</Text>
         <Text style={styles.fallbackCopy}>
           Set EXPO_PUBLIC_MAPBOX_TOKEN in apps/universal/.env to render the Mapbox base map.
@@ -91,7 +91,7 @@ export default function Map({
   }
 
   return (
-    <View style={[styles.container, style]}>
+    <View style={StyleSheet.flatten([styles.container, style])}>
       <MapboxGL.MapView style={styles.map} styleURL={DEFAULT_MAP_STYLE}>
         <MapboxGL.Camera
           ref={cameraRef}

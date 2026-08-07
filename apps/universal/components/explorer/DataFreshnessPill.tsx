@@ -7,7 +7,7 @@ type Props = {
 
 export default function DataFreshnessPill({ dateLabel, style }: Props) {
   return (
-    <View style={[styles.pill, style]} pointerEvents="none">
+    <View style={StyleSheet.flatten([styles.pill, style])} pointerEvents="none">
       <Text style={styles.dot}>●</Text>
       <Text style={styles.text}>Data: {dateLabel}</Text>
     </View>

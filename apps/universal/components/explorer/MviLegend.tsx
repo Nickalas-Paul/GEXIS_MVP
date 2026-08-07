@@ -8,16 +8,16 @@ type Props = {
 
 export default function MviLegend({ style }: Props) {
   return (
-    <View style={[styles.wrap, style]} pointerEvents="none">
+    <View style={StyleSheet.flatten([styles.wrap, style])} pointerEvents="none">
       <Text style={styles.caption}>MARKET VIABILITY INDEX</Text>
       <View style={styles.barRow}>
         <Text style={styles.edge}>0</Text>
         <View
-          style={[
+          style={StyleSheet.flatten([
             styles.bar,
             // RN Web accepts CSS backgroundImage on View
             { backgroundImage: MVI_LEGEND_GRADIENT } as object,
-          ]}
+          ])}
         />
         <Text style={styles.edge}>100</Text>
       </View>

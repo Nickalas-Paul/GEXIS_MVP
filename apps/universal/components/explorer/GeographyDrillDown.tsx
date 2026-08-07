@@ -1,4 +1,4 @@
-import { Link } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -49,6 +49,7 @@ export default function GeographyDrillDown({
   variant = 'panel',
   style,
 }: Props) {
+  const router = useRouter();
   const [data, setData] = useState<GeographyListItem | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -120,10 +121,10 @@ export default function GeographyDrillDown({
               <Text style={styles.scoreUnit}>/100 MVI</Text>
               <View style={styles.confRow}>
                 <View
-                  style={[
+                  style={StyleSheet.flatten([
                     styles.confDot,
                     { backgroundColor: confidenceColor(data.mvi?.confidence) },
-                  ]}
+                  ])}
                 />
                 <Text style={styles.confLabel}>
                   {(data.mvi?.confidence ?? 'unknown').toUpperCase()} CONFIDENCE
@@ -140,20 +141,25 @@ export default function GeographyDrillDown({
                 <View key={dim.key} style={styles.dimRow}>
                   <View style={styles.dimHeader}>
                     <Text style={styles.dimLabel}>{dim.label}</Text>
-                    <Text style={[styles.dimValue, { color: dim.color }]}>
+                    <Text
+                      style={StyleSheet.flatten([
+                        styles.dimValue,
+                        { color: dim.color },
+                      ])}
+                    >
                       {value != null ? Math.round(value) : '—'}
                     </Text>
                   </View>
                   <View style={styles.dimTrack}>
                     <View
-                      style={[
+                      style={StyleSheet.flatten([
                         styles.dimFill,
                         {
                           width: `${pct}%`,
                           backgroundColor: dim.color,
                           opacity: value == null ? 0.25 : 1,
                         },
-                      ]}
+                      ])}
                     />
                   </View>
                 </View>
@@ -162,21 +168,22 @@ export default function GeographyDrillDown({
           </View>
 
           <View style={styles.actions}>
-            <Link href={`/explorer/${geoKey}`} asChild>
-              <Pressable style={styles.actionBtn}>
-                <Text style={styles.actionText}>Full breakdown →</Text>
-              </Pressable>
-            </Link>
-            <Link href={`/explorer/${geoKey}/agents`} asChild>
-              <Pressable
-                style={StyleSheet.flatten([
-                  styles.actionBtn,
-                  styles.actionBtnSecondary,
-                ])}
-              >
-                <Text style={styles.actionTextSecondary}>View agents →</Text>
-              </Pressable>
-            </Link>
+            {/* router.push avoids Link asChild → Slot style-array crash on native */}
+            <Pressable
+              style={styles.actionBtn}
+              onPress={() => router.push(`/explorer/${geoKey}`)}
+            >
+              <Text style={styles.actionText}>Full breakdown →</Text>
+            </Pressable>
+            <Pressable
+              style={StyleSheet.flatten([
+                styles.actionBtn,
+                styles.actionBtnSecondary,
+              ])}
+              onPress={() => router.push(`/explorer/${geoKey}/agents`)}
+            >
+              <Text style={styles.actionTextSecondary}>View agents →</Text>
+            </Pressable>
           </View>
         </ScrollView>
       ) : null}

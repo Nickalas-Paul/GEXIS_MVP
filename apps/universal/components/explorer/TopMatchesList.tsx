@@ -19,7 +19,7 @@ export default function TopMatchesList({
   const scored = items.filter((g) => g.mvi?.overall != null);
 
   return (
-    <View style={[styles.wrap, style]}>
+    <View style={StyleSheet.flatten([styles.wrap, style])}>
       <View style={styles.header}>
         <Text style={styles.title}>TOP MATCHES</Text>
         <Text style={styles.count}>{scored.length} results</Text>
@@ -33,16 +33,21 @@ export default function TopMatchesList({
             <Pressable
               key={item.id}
               onPress={() => onSelect(item)}
-              style={[styles.row, selected && styles.rowSelected]}
+              style={StyleSheet.flatten([styles.row, selected && styles.rowSelected])}
             >
-              <View style={[styles.dot, { backgroundColor: color }]} />
+              <View
+                style={StyleSheet.flatten([styles.dot, { backgroundColor: color }])}
+              />
               <Text
-                style={[styles.name, selected && styles.nameSelected]}
+                style={StyleSheet.flatten([
+                  styles.name,
+                  selected && styles.nameSelected,
+                ])}
                 numberOfLines={1}
               >
                 {item.name}
               </Text>
-              <Text style={[styles.score, { color }]}>
+              <Text style={StyleSheet.flatten([styles.score, { color }])}>
                 {score != null ? Math.round(score) : '—'}
               </Text>
             </Pressable>

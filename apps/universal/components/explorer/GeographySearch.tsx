@@ -85,7 +85,7 @@ export default function GeographySearch({ geojson, onSelect, style }: Props) {
   }, []);
 
   return (
-    <View ref={wrapRef} style={[styles.wrap, style]}>
+    <View ref={wrapRef} style={StyleSheet.flatten([styles.wrap, style])}>
       <View style={styles.inputRow}>
         <Text style={styles.icon}>⌕</Text>
         <TextInput
@@ -119,7 +119,7 @@ export default function GeographySearch({ geojson, onSelect, style }: Props) {
                 <Text style={styles.itemName} numberOfLines={1}>
                   {r.name}
                 </Text>
-                <Text style={[styles.itemScore, { color }]}>
+                <Text style={StyleSheet.flatten([styles.itemScore, { color }])}>
                   {r.overall != null ? Math.round(r.overall) : '—'}
                 </Text>
               </Pressable>

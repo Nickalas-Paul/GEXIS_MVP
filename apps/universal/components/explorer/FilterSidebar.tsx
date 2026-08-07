@@ -48,7 +48,10 @@ function RangeSlider({
       <View style={styles.sliderTrackWrap}>
         <View style={styles.sliderTrackBg}>
           <View
-            style={[styles.sliderTrackFill, { width: `${pct}%`, backgroundColor: accent }]}
+            style={StyleSheet.flatten([
+              styles.sliderTrackFill,
+              { width: `${pct}%`, backgroundColor: accent },
+            ])}
           />
         </View>
         {/* RN Web: native range for smooth drag */}
@@ -80,9 +83,12 @@ function RangeSlider({
       <Pressable onPress={() => onChange(Math.max(min, value - step))} style={styles.stepBtn}>
         <Text style={styles.stepBtnText}>−</Text>
       </Pressable>
-      <View style={[styles.sliderTrackBg, { flex: 1 }]}>
+      <View style={StyleSheet.flatten([styles.sliderTrackBg, { flex: 1 }])}>
         <View
-          style={[styles.sliderTrackFill, { width: `${pct}%`, backgroundColor: accent }]}
+          style={StyleSheet.flatten([
+            styles.sliderTrackFill,
+            { width: `${pct}%`, backgroundColor: accent },
+          ])}
         />
       </View>
       <Pressable onPress={() => onChange(Math.min(max, value + step))} style={styles.stepBtn}>
@@ -114,7 +120,7 @@ function FilterRow({
 
 export default function FilterSidebar({ filters, onChange, onReset, style }: Props) {
   return (
-    <View style={[styles.sidebar, style]}>
+    <View style={StyleSheet.flatten([styles.sidebar, style])}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>FILTERS</Text>
         <Pressable onPress={onReset} hitSlop={8}>
@@ -122,7 +128,7 @@ export default function FilterSidebar({ filters, onChange, onReset, style }: Pro
         </Pressable>
       </View>
 
-      <View style={[styles.row, styles.verticalRow]}>
+      <View style={StyleSheet.flatten([styles.row, styles.verticalRow])}>
         <Text style={styles.rowLabel}>Industry Vertical</Text>
         <IndustryVerticalSelect
           value={filters.industryVertical}
