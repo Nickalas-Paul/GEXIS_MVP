@@ -68,37 +68,18 @@ export function mviFillColorExpression(): unknown[] {
 }
 
 /**
- * Native choropleth fill-color using `overallScore` (with `overall` fallback),
- * matching the Mapbox style-spec stops used on device.
+ * Native choropleth fill-color using `overallScore` only.
+ * Prefer `typeof === number` over bare null compares / coalesce — JSON null
+ * still counts as `has`, and bare `null` in expressions is unreliable on native.
  */
 export function mviFillColorExpressionNative(): unknown[] {
-  const scoreExpr: unknown[] = [
-    'coalesce',
-    ['get', 'overallScore'],
-    ['get', 'overall'],
-  ];
   return [
     'case',
-    [
-      'any',
-      [
-        'all',
-        ['!', ['has', 'overallScore']],
-        ['!', ['has', 'overall']],
-      ],
-      ['==', ['get', 'overallScore'], null],
-      ['==', ['typeof', ['get', 'overallScore']], 'null'],
-      [
-        'all',
-        ['==', ['typeof', ['get', 'overallScore']], 'null'],
-        ['==', ['get', 'overall'], null],
-      ],
-    ],
-    MVI_NULL_FILL,
+    ['==', ['typeof', ['get', 'overallScore']], 'number'],
     [
       'interpolate',
       ['linear'],
-      scoreExpr,
+      ['get', 'overallScore'],
       20,
       '#1e3a5f',
       35,
@@ -110,6 +91,7 @@ export function mviFillColorExpressionNative(): unknown[] {
       76,
       '#d93025',
     ],
+    MVI_NULL_FILL,
   ];
 }
 

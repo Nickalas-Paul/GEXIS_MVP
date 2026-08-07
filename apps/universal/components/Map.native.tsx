@@ -40,6 +40,12 @@ export default function Map({
       '[Map.native] matchedIsoCodes:',
       matchedIsoCodes ? matchedIsoCodes.size + ' codes' : 'null'
     );
+    if (geojson && geojson.features.length > 0) {
+      console.log(
+        '[Map.native] First feature properties:',
+        JSON.stringify(geojson.features[0].properties)
+      );
+    }
   }, [geojson, matchedIsoCodes]);
 
   const fillOpacity = useMemo(() => {
