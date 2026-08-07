@@ -1,4 +1,5 @@
 import type { GeographyFilters } from '@/services/geographies';
+import { DEFAULT_INDUSTRY_VERTICAL } from '@/lib/industryVerticals';
 
 export type ExplorerFilterState = {
   industryVertical: string;
@@ -10,7 +11,7 @@ export type ExplorerFilterState = {
 };
 
 export const DEFAULT_FILTERS: ExplorerFilterState = {
-  industryVertical: 'all_industries',
+  industryVertical: DEFAULT_INDUSTRY_VERTICAL,
   minPopulation: 0,
   maxCorpTaxRate: 50,
   minTalentDensity: 0,
@@ -90,7 +91,10 @@ export function parseFiltersFromParams(
   };
 
   return {
-    industryVertical: one('vertical') || DEFAULT_FILTERS.industryVertical,
+    industryVertical:
+      one('vertical') === 'all_industries'
+        ? DEFAULT_FILTERS.industryVertical
+        : one('vertical') || DEFAULT_FILTERS.industryVertical,
     minPopulation: num('minPopulation', DEFAULT_FILTERS.minPopulation),
     maxCorpTaxRate: num('maxCorpTaxRate', DEFAULT_FILTERS.maxCorpTaxRate),
     minTalentDensity: num('minTalentDensity', DEFAULT_FILTERS.minTalentDensity),

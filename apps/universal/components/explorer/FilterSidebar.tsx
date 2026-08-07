@@ -15,6 +15,9 @@ import {
   formatPopulation,
   type ExplorerFilterState,
 } from '@/lib/explorerFilters';
+import { verticalLabel } from '@/lib/industryVerticals';
+
+import IndustryVerticalSelect from './IndustryVerticalSelect';
 
 type Props = {
   filters: ExplorerFilterState;
@@ -123,24 +126,14 @@ export default function FilterSidebar({ filters, onChange, onReset, style }: Pro
       <View style={styles.row}>
         <Text style={styles.rowLabel}>Industry Vertical</Text>
         {Platform.OS === 'web' ? (
-          <select
+          <IndustryVerticalSelect
             value={filters.industryVertical}
-            onChange={(e) => onChange({ industryVertical: e.target.value })}
-            style={{
-              marginTop: 8,
-              width: '100%',
-              backgroundColor: '#161622',
-              color: '#e8e8f0',
-              border: '1px solid #2a2a3e',
-              borderRadius: 6,
-              padding: '8px 10px',
-              fontSize: 13,
-            }}
-          >
-            <option value="all_industries">All Industries</option>
-          </select>
+            onChange={(industryVertical) => onChange({ industryVertical })}
+          />
         ) : (
-          <Text style={styles.staticValue}>All Industries</Text>
+          <Text style={styles.staticValue}>
+            {verticalLabel(filters.industryVertical)}
+          </Text>
         )}
       </View>
 

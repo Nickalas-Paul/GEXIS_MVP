@@ -86,8 +86,16 @@ async function parseJson<T>(response: Response): Promise<T> {
   return (await response.json()) as T;
 }
 
-export async function fetchGeographiesGeojson(): Promise<GeographyFeatureCollection> {
-  const response = await fetch(`${getApiUrl()}/api/geographies/geojson`);
+export async function fetchGeographiesGeojson(
+  vertical?: string
+): Promise<GeographyFeatureCollection> {
+  const qs =
+    vertical && vertical !== 'all'
+      ? `?vertical=${encodeURIComponent(vertical)}`
+      : vertical
+        ? `?vertical=${encodeURIComponent(vertical)}`
+        : '';
+  const response = await fetch(`${getApiUrl()}/api/geographies/geojson${qs}`);
   return parseJson<GeographyFeatureCollection>(response);
 }
 
@@ -99,7 +107,7 @@ export async function filterGeographies(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      vertical: options?.vertical ?? 'all_industries',
+      vertical: options?.vertical ?? 'all',
       filters,
       sort: { field: 'overall', direction: 'desc' },
       limit: options?.limit ?? 200,
@@ -113,10 +121,12 @@ export async function filterGeographies(
 }
 
 export async function fetchGeographyById(
-  idOrIso: string
+  idOrIso: string,
+  vertical?: string
 ): Promise<GeographyListItem> {
+  const qs = vertical ? `?vertical=${encodeURIComponent(vertical)}` : '';
   const response = await fetch(
-    `${getApiUrl()}/api/geographies/${encodeURIComponent(idOrIso)}`
+    `${getApiUrl()}/api/geographies/${encodeURIComponent(idOrIso)}${qs}`
   );
   const json = await parseJson<ApiEnvelope<GeographyListItem>>(response);
   return json.data;

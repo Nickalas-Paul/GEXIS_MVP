@@ -36,6 +36,7 @@ function confidenceColor(c: string | null | undefined): string {
 
 type Props = {
   geographyIdOrIso: string | null;
+  vertical?: string;
   onClose: () => void;
   variant?: 'panel' | 'sheet';
   style?: object;
@@ -43,6 +44,7 @@ type Props = {
 
 export default function GeographyDrillDown({
   geographyIdOrIso,
+  vertical = 'all',
   onClose,
   variant = 'panel',
   style,
@@ -59,7 +61,7 @@ export default function GeographyDrillDown({
     let cancelled = false;
     setLoading(true);
     setError(null);
-    void fetchGeographyById(geographyIdOrIso)
+    void fetchGeographyById(geographyIdOrIso, vertical)
       .then((geo) => {
         if (!cancelled) setData(geo);
       })
@@ -75,7 +77,7 @@ export default function GeographyDrillDown({
     return () => {
       cancelled = true;
     };
-  }, [geographyIdOrIso]);
+  }, [geographyIdOrIso, vertical]);
 
   if (!geographyIdOrIso) return null;
 

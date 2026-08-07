@@ -6,7 +6,13 @@
 
 import { Router, Request, Response } from 'express';
 import { pool } from '../config/database';
-import { DEFAULT_VERTICAL, MVI_SCORING_VERSION } from '../config/mvi';
+import {
+  computeWeightedOverall,
+  DEFAULT_VERTICAL,
+  MVI_SCORING_VERSION,
+  resolveVerticalKey,
+  STORED_MVI_VERTICAL,
+} from '../config/mvi';
 import { apiError, apiResponse } from '../utils/response';
 
 const router = Router();
@@ -67,8 +73,7 @@ const GEO_SELECT = `
 `;
 
 function parseVertical(raw: unknown): string {
-  if (typeof raw === 'string' && raw.trim()) return raw.trim();
-  return DEFAULT_VERTICAL;
+  return resolveVerticalKey(raw);
 }
 
 function parseFields(raw: unknown): Set<string> {
@@ -90,19 +95,24 @@ function formatDateOnly(value: Date | string | null | undefined): string | null 
 
 function buildMvi(
   row: DbGeoRow,
-  includeSources: boolean
+  includeSources: boolean,
+  verticalKey: string
 ): Record<string, unknown> | null {
   if (row.overall_score == null && row.dimensions == null && row.confidence == null) {
     return null;
   }
+  const weighted = computeWeightedOverall(row.dimensions, verticalKey);
   const mvi: Record<string, unknown> = {
-    overall: row.overall_score != null ? Number(row.overall_score) : null,
+    overall:
+      weighted ??
+      (row.overall_score != null ? Number(row.overall_score) : null),
     dimensions: row.dimensions,
     confidence: row.confidence,
     dataFreshness: formatDateOnly(row.data_freshness),
     calculatedAt: row.calculated_at
       ? new Date(row.calculated_at).toISOString()
       : null,
+    vertical: verticalKey || DEFAULT_VERTICAL,
   };
   if (includeSources) {
     mvi.sources = row.sources ?? [];
@@ -112,8 +122,13 @@ function buildMvi(
 
 function mapGeography(
   row: DbGeoRow,
-  opts: { includeGeometry?: boolean; includeSources?: boolean } = {}
+  opts: {
+    includeGeometry?: boolean;
+    includeSources?: boolean;
+    vertical?: string;
+  } = {}
 ): Record<string, unknown> {
+  const vertical = resolveVerticalKey(opts.vertical);
   const out: Record<string, unknown> = {
     id: row.id,
     name: row.name,
@@ -135,7 +150,7 @@ function mapGeography(
         : null,
     population: row.population != null ? Number(row.population) : null,
     gdpPpp: row.gdp_ppp != null ? Number(row.gdp_ppp) : null,
-    mvi: buildMvi(row, Boolean(opts.includeSources)),
+    mvi: buildMvi(row, Boolean(opts.includeSources), vertical),
   };
 
   if (opts.includeGeometry && row.geometry_geojson) {
@@ -145,7 +160,7 @@ function mapGeography(
   return out;
 }
 
-async function metaCounts(vertical: string): Promise<{ total: number; scored: number }> {
+async function metaCounts(): Promise<{ total: number; scored: number }> {
   const result = await pool.query<{ total: string; scored: string }>(
     `
     SELECT
@@ -157,7 +172,7 @@ async function metaCounts(vertical: string): Promise<{ total: number; scored: nu
      AND m.industry_vertical = $1
     WHERE g.region_type = 'country'
     `,
-    [vertical]
+    [STORED_MVI_VERTICAL]
   );
   return {
     total: Number(result.rows[0]?.total ?? 0),
@@ -177,7 +192,7 @@ router.get('/', async (req: Request, res: Response) => {
         ? req.query.region_type.trim()
         : 'country';
 
-    const params: unknown[] = [vertical, regionType];
+    const params: unknown[] = [STORED_MVI_VERTICAL, regionType];
     const where: string[] = ['g.region_type = $2'];
 
     if (req.query.min_score != null && String(req.query.min_score).length) {
@@ -211,9 +226,9 @@ router.get('/', async (req: Request, res: Response) => {
       params
     );
 
-    const counts = await metaCounts(vertical);
+    const counts = await metaCounts();
     const data = result.rows.map((row) =>
-      mapGeography(row, { includeGeometry, includeSources })
+      mapGeography(row, { includeGeometry, includeSources, vertical })
     );
 
     res.json(
@@ -252,7 +267,7 @@ router.get('/search', async (req: Request, res: Response) => {
       return;
     }
 
-    const params: unknown[] = [vertical];
+    const params: unknown[] = [STORED_MVI_VERTICAL];
     let spatialClause = '';
 
     if (hasBbox) {
@@ -305,7 +320,7 @@ router.get('/search', async (req: Request, res: Response) => {
       params
     );
 
-    const data = result.rows.map((row) => mapGeography(row));
+    const data = result.rows.map((row) => mapGeography(row, { vertical }));
     res.json(
       apiResponse(data, {
         total: data.length,
@@ -360,11 +375,12 @@ router.get('/geojson', async (req: Request, res: Response) => {
         AND g.geometry IS NOT NULL
       ORDER BY g.name ASC
       `,
-      [vertical]
+      [STORED_MVI_VERTICAL]
     );
 
     const features = result.rows.map((row) => {
       const dims = row.dimensions ?? ({} as MviDimensions);
+      const overall = computeWeightedOverall(dims, vertical);
       return {
         type: 'Feature',
         id: row.iso_code ?? row.id,
@@ -372,7 +388,8 @@ router.get('/geojson', async (req: Request, res: Response) => {
           id: row.id,
           name: row.name,
           isoCode: row.iso_code,
-          overall: row.overall_score != null ? Number(row.overall_score) : null,
+          overall,
+          overallScore: overall,
           marketSizeAndGrowth: dims.marketSizeAndGrowth ?? null,
           talentDensity: dims.talentDensity ?? null,
           taxEnvironment: dims.taxEnvironment ?? null,
@@ -381,15 +398,17 @@ router.get('/geojson', async (req: Request, res: Response) => {
           competitorSaturation: dims.competitorSaturation ?? null,
           confidence: row.confidence,
           population: row.population != null ? Number(row.population) : null,
+          vertical,
         },
         geometry: row.geometry_geojson ? JSON.parse(row.geometry_geojson) : null,
       };
     });
 
-    res.setHeader('Cache-Control', 'public, max-age=3600');
+    res.setHeader('Cache-Control', 'public, max-age=60');
     res.json({
       type: 'FeatureCollection',
       features,
+      meta: { vertical, dataVersion: MVI_SCORING_VERSION },
     });
   } catch (err) {
     console.error('[geographies] geojson error:', err);
@@ -417,7 +436,7 @@ router.post('/filter', async (req: Request, res: Response) => {
     if (Number.isNaN(limit) || limit < 1) limit = 50;
     if (limit > 200) limit = 200;
 
-    const params: unknown[] = [vertical];
+    const params: unknown[] = [STORED_MVI_VERTICAL];
     const where: string[] = [`g.region_type = 'country'`];
 
     const addNumFilter = (value: unknown, sql: string) => {
@@ -495,7 +514,9 @@ router.post('/filter', async (req: Request, res: Response) => {
       'competitorsaturation',
     ]);
 
-    let orderBy = `m.overall_score ${sortDir} NULLS LAST, g.name ASC`;
+    // Fetch without relying on stored overall for final ranking when vertical weights apply.
+    // Prefer name order in SQL; re-sort in memory by weighted overall / dimension.
+    let orderBy = `g.name ASC`;
     if (sortField !== 'overall' && dimensionSortKeys.has(sortField.replace(/_/g, ''))) {
       const keyMap: Record<string, string> = {
         marketsizeandgrowth: 'marketSizeAndGrowth',
@@ -509,7 +530,9 @@ router.post('/filter', async (req: Request, res: Response) => {
       orderBy = `(m.dimensions->>'${dimKey}')::numeric ${sortDir} NULLS LAST, g.name ASC`;
     }
 
-    params.push(limit);
+    // Over-fetch then trim after weighted sort so Top Matches ranks by vertical overall.
+    const fetchLimit = Math.min(500, Math.max(limit * 3, 200));
+    params.push(fetchLimit);
     const result = await pool.query<DbGeoRow>(
       `
       SELECT ${GEO_SELECT}
@@ -524,7 +547,20 @@ router.post('/filter', async (req: Request, res: Response) => {
       params
     );
 
-    const data = result.rows.map((row) => mapGeography(row));
+    let data = result.rows.map((row) => mapGeography(row, { vertical }));
+    if (sortField === 'overall') {
+      const dir = sortDir === 'ASC' ? 1 : -1;
+      data = [...data].sort((a, b) => {
+        const ao = (a.mvi as { overall?: number | null } | null)?.overall;
+        const bo = (b.mvi as { overall?: number | null } | null)?.overall;
+        if (ao == null && bo == null) return 0;
+        if (ao == null) return 1;
+        if (bo == null) return -1;
+        return (ao - bo) * dir;
+      });
+    }
+    data = data.slice(0, limit);
+
     res.json(
       apiResponse(data, {
         total: data.length,
@@ -562,7 +598,7 @@ router.get('/:id', async (req: Request, res: Response) => {
       WHERE ${isIso ? 'upper(g.iso_code) = upper($2)' : 'g.id = $2::uuid'}
       LIMIT 1
       `,
-      [vertical, isIso ? id.toUpperCase() : id]
+      [STORED_MVI_VERTICAL, isIso ? id.toUpperCase() : id]
     );
 
     if (result.rows.length === 0) {
@@ -572,7 +608,11 @@ router.get('/:id', async (req: Request, res: Response) => {
 
     res.json(
       apiResponse(
-        mapGeography(result.rows[0], { includeGeometry: true, includeSources: true })
+        mapGeography(result.rows[0], {
+          includeGeometry: true,
+          includeSources: true,
+          vertical,
+        })
       )
     );
   } catch (err) {

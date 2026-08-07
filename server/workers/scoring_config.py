@@ -157,25 +157,135 @@ DIMENSIONS = {
     },
 }
 
-# Industry vertical overrides (Phase 6 — scaffold now, activate later).
-# Default: all six dimensions weighted equally.
-VERTICAL_WEIGHTS = {
-    "all_industries": {
-        "marketSizeAndGrowth": 1 / 6,
-        "talentDensity": 1 / 6,
-        "taxEnvironment": 1 / 6,
-        "regulatoryEase": 1 / 6,
-        "infrastructure": 1 / 6,
-        "competitorSaturation": 1 / 6,
+# Industry vertical weight profiles (API applies these on query; compute_mvi stores equal-weight).
+# COUPLING: keep in sync with server/api/src/config/mvi.ts INDUSTRY_VERTICALS.
+INDUSTRY_VERTICALS = {
+    "all": {
+        "label": "All Industries",
+        "weights": {
+            "marketSizeAndGrowth": 0.167,
+            "talentDensity": 0.167,
+            "taxEnvironment": 0.167,
+            "regulatoryEase": 0.167,
+            "infrastructure": 0.167,
+            "competitorSaturation": 0.167,
+        },
     },
-    # "saas": {
-    #     "marketSizeAndGrowth": 0.25,
-    #     "talentDensity": 0.25,
-    #     "taxEnvironment": 0.15,
-    #     "regulatoryEase": 0.15,
-    #     "infrastructure": 0.15,
-    #     "competitorSaturation": 0.05,
-    # },
+    "tech_saas": {
+        "label": "Technology & SaaS",
+        "weights": {
+            "marketSizeAndGrowth": 0.15,
+            "talentDensity": 0.25,
+            "taxEnvironment": 0.15,
+            "regulatoryEase": 0.10,
+            "infrastructure": 0.20,
+            "competitorSaturation": 0.15,
+        },
+    },
+    "financial": {
+        "label": "Financial Services",
+        "weights": {
+            "marketSizeAndGrowth": 0.20,
+            "talentDensity": 0.15,
+            "taxEnvironment": 0.20,
+            "regulatoryEase": 0.25,
+            "infrastructure": 0.10,
+            "competitorSaturation": 0.10,
+        },
+    },
+    "manufacturing": {
+        "label": "Manufacturing",
+        "weights": {
+            "marketSizeAndGrowth": 0.15,
+            "talentDensity": 0.10,
+            "taxEnvironment": 0.15,
+            "regulatoryEase": 0.20,
+            "infrastructure": 0.25,
+            "competitorSaturation": 0.15,
+        },
+    },
+    "healthcare": {
+        "label": "Healthcare & Life Sciences",
+        "weights": {
+            "marketSizeAndGrowth": 0.20,
+            "talentDensity": 0.20,
+            "taxEnvironment": 0.10,
+            "regulatoryEase": 0.25,
+            "infrastructure": 0.15,
+            "competitorSaturation": 0.10,
+        },
+    },
+    "ecommerce": {
+        "label": "E-Commerce & Retail",
+        "weights": {
+            "marketSizeAndGrowth": 0.25,
+            "talentDensity": 0.10,
+            "taxEnvironment": 0.15,
+            "regulatoryEase": 0.10,
+            "infrastructure": 0.25,
+            "competitorSaturation": 0.15,
+        },
+    },
+    "energy": {
+        "label": "Energy & Renewables",
+        "weights": {
+            "marketSizeAndGrowth": 0.15,
+            "talentDensity": 0.10,
+            "taxEnvironment": 0.15,
+            "regulatoryEase": 0.25,
+            "infrastructure": 0.25,
+            "competitorSaturation": 0.10,
+        },
+    },
+    "professional": {
+        "label": "Professional Services",
+        "weights": {
+            "marketSizeAndGrowth": 0.15,
+            "talentDensity": 0.30,
+            "taxEnvironment": 0.15,
+            "regulatoryEase": 0.15,
+            "infrastructure": 0.10,
+            "competitorSaturation": 0.15,
+        },
+    },
+    "logistics": {
+        "label": "Logistics & Supply Chain",
+        "weights": {
+            "marketSizeAndGrowth": 0.20,
+            "talentDensity": 0.05,
+            "taxEnvironment": 0.15,
+            "regulatoryEase": 0.15,
+            "infrastructure": 0.35,
+            "competitorSaturation": 0.10,
+        },
+    },
+    "telecom": {
+        "label": "Telecommunications",
+        "weights": {
+            "marketSizeAndGrowth": 0.20,
+            "talentDensity": 0.15,
+            "taxEnvironment": 0.10,
+            "regulatoryEase": 0.20,
+            "infrastructure": 0.25,
+            "competitorSaturation": 0.10,
+        },
+    },
+    "consumer_goods": {
+        "label": "Consumer Goods & CPG",
+        "weights": {
+            "marketSizeAndGrowth": 0.25,
+            "talentDensity": 0.10,
+            "taxEnvironment": 0.10,
+            "regulatoryEase": 0.15,
+            "infrastructure": 0.20,
+            "competitorSaturation": 0.20,
+        },
+    },
+}
+
+# Legacy equal-weight map used by compute_mvi batch (DB industry_vertical key).
+VERTICAL_WEIGHTS = {
+    "all_industries": INDUSTRY_VERTICALS["all"]["weights"],
 }
 
 INDUSTRY_VERTICAL = "all_industries"

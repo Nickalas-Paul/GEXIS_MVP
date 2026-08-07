@@ -187,4 +187,196 @@ export const SOURCE_CATALOG: Record<
   },
 };
 
-export const DEFAULT_VERTICAL = 'all_industries';
+/** DB key used by compute_mvi.py / mvi_scores.industry_vertical (equal-weight batch). */
+export const STORED_MVI_VERTICAL = 'all_industries';
+
+export type DimensionWeights = Record<DimensionKey, number>;
+
+export interface IndustryVertical {
+  key: string;
+  label: string;
+  weights: DimensionWeights;
+}
+
+/**
+ * Industry vertical weight profiles for on-the-fly overall MVI recomputation.
+ * COUPLING: keep in sync with server/workers/scoring_config.py INDUSTRY_VERTICALS.
+ * Dimension scores are stored once (equal-weight); overall is reweighted at query time.
+ */
+export const INDUSTRY_VERTICALS: IndustryVertical[] = [
+  {
+    key: 'all',
+    label: 'All Industries',
+    weights: {
+      marketSizeAndGrowth: 0.167,
+      talentDensity: 0.167,
+      taxEnvironment: 0.167,
+      regulatoryEase: 0.167,
+      infrastructure: 0.167,
+      competitorSaturation: 0.167,
+    },
+  },
+  {
+    key: 'tech_saas',
+    label: 'Technology & SaaS',
+    weights: {
+      marketSizeAndGrowth: 0.15,
+      talentDensity: 0.25,
+      taxEnvironment: 0.15,
+      regulatoryEase: 0.1,
+      infrastructure: 0.2,
+      competitorSaturation: 0.15,
+    },
+  },
+  {
+    key: 'financial',
+    label: 'Financial Services',
+    weights: {
+      marketSizeAndGrowth: 0.2,
+      talentDensity: 0.15,
+      taxEnvironment: 0.2,
+      regulatoryEase: 0.25,
+      infrastructure: 0.1,
+      competitorSaturation: 0.1,
+    },
+  },
+  {
+    key: 'manufacturing',
+    label: 'Manufacturing',
+    weights: {
+      marketSizeAndGrowth: 0.15,
+      talentDensity: 0.1,
+      taxEnvironment: 0.15,
+      regulatoryEase: 0.2,
+      infrastructure: 0.25,
+      competitorSaturation: 0.15,
+    },
+  },
+  {
+    key: 'healthcare',
+    label: 'Healthcare & Life Sciences',
+    weights: {
+      marketSizeAndGrowth: 0.2,
+      talentDensity: 0.2,
+      taxEnvironment: 0.1,
+      regulatoryEase: 0.25,
+      infrastructure: 0.15,
+      competitorSaturation: 0.1,
+    },
+  },
+  {
+    key: 'ecommerce',
+    label: 'E-Commerce & Retail',
+    weights: {
+      marketSizeAndGrowth: 0.25,
+      talentDensity: 0.1,
+      taxEnvironment: 0.15,
+      regulatoryEase: 0.1,
+      infrastructure: 0.25,
+      competitorSaturation: 0.15,
+    },
+  },
+  {
+    key: 'energy',
+    label: 'Energy & Renewables',
+    weights: {
+      marketSizeAndGrowth: 0.15,
+      talentDensity: 0.1,
+      taxEnvironment: 0.15,
+      regulatoryEase: 0.25,
+      infrastructure: 0.25,
+      competitorSaturation: 0.1,
+    },
+  },
+  {
+    key: 'professional',
+    label: 'Professional Services',
+    weights: {
+      marketSizeAndGrowth: 0.15,
+      talentDensity: 0.3,
+      taxEnvironment: 0.15,
+      regulatoryEase: 0.15,
+      infrastructure: 0.1,
+      competitorSaturation: 0.15,
+    },
+  },
+  {
+    key: 'logistics',
+    label: 'Logistics & Supply Chain',
+    weights: {
+      marketSizeAndGrowth: 0.2,
+      talentDensity: 0.05,
+      taxEnvironment: 0.15,
+      regulatoryEase: 0.15,
+      infrastructure: 0.35,
+      competitorSaturation: 0.1,
+    },
+  },
+  {
+    key: 'telecom',
+    label: 'Telecommunications',
+    weights: {
+      marketSizeAndGrowth: 0.2,
+      talentDensity: 0.15,
+      taxEnvironment: 0.1,
+      regulatoryEase: 0.2,
+      infrastructure: 0.25,
+      competitorSaturation: 0.1,
+    },
+  },
+  {
+    key: 'consumer_goods',
+    label: 'Consumer Goods & CPG',
+    weights: {
+      marketSizeAndGrowth: 0.25,
+      talentDensity: 0.1,
+      taxEnvironment: 0.1,
+      regulatoryEase: 0.15,
+      infrastructure: 0.2,
+      competitorSaturation: 0.2,
+    },
+  },
+];
+
+export const DEFAULT_VERTICAL = 'all';
+
+const VERTICAL_BY_KEY = new Map(INDUSTRY_VERTICALS.map((v) => [v.key, v]));
+
+export function resolveVerticalKey(raw: unknown): string {
+  if (typeof raw !== 'string' || !raw.trim()) return DEFAULT_VERTICAL;
+  const key = raw.trim();
+  // Legacy DB / URL alias
+  if (key === 'all_industries') return DEFAULT_VERTICAL;
+  if (VERTICAL_BY_KEY.has(key)) return key;
+  return DEFAULT_VERTICAL;
+}
+
+export function getVerticalWeights(verticalKey: string): DimensionWeights {
+  const resolved = resolveVerticalKey(verticalKey);
+  return (
+    VERTICAL_BY_KEY.get(resolved)?.weights ??
+    VERTICAL_BY_KEY.get(DEFAULT_VERTICAL)!.weights
+  );
+}
+
+/** Weighted overall from stored dimension scores; renormalizes over non-null dims. */
+export function computeWeightedOverall(
+  dimensions: Partial<Record<DimensionKey, number | null>> | null | undefined,
+  verticalKey: string = DEFAULT_VERTICAL
+): number | null {
+  if (!dimensions) return null;
+  const weights = getVerticalWeights(verticalKey);
+  let numerator = 0;
+  let denominator = 0;
+  (Object.keys(weights) as DimensionKey[]).forEach((key) => {
+    const raw = dimensions[key];
+    if (raw == null) return;
+    const value = Number(raw);
+    if (Number.isNaN(value)) return;
+    const w = weights[key];
+    numerator += value * w;
+    denominator += w;
+  });
+  if (denominator <= 0) return null;
+  return Math.round((numerator / denominator) * 100) / 100;
+}

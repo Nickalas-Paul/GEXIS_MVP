@@ -1,0 +1,177 @@
+import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
+
+import {
+  INDUSTRY_VERTICAL_OPTIONS,
+  verticalLabel,
+} from '@/lib/industryVerticals';
+
+type Props = {
+  value: string;
+  onChange: (key: string) => void;
+};
+
+export default function IndustryVerticalSelect({ value, onChange }: Props) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const wrapRef = useRef<View>(null);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return INDUSTRY_VERTICAL_OPTIONS;
+    return INDUSTRY_VERTICAL_OPTIONS.filter((v) =>
+      v.label.toLowerCase().includes(q)
+    );
+  }, [query]);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !open) return;
+    const onDoc = (e: MouseEvent) => {
+      const el = wrapRef.current as unknown as HTMLElement | null;
+      if (el && typeof el.contains === 'function' && !el.contains(e.target as Node)) {
+        setOpen(false);
+        setQuery('');
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setOpen(false);
+        setQuery('');
+      }
+    };
+    document.addEventListener('mousedown', onDoc);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDoc);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  return (
+    <View ref={wrapRef} style={styles.wrap}>
+      <Pressable
+        style={styles.trigger}
+        onPress={() => setOpen((v) => !v)}
+      >
+        <Text style={styles.triggerText} numberOfLines={1}>
+          {verticalLabel(value)}
+        </Text>
+        <Text style={styles.chevron}>{open ? '▴' : '▾'}</Text>
+      </Pressable>
+
+      {open ? (
+        <View style={styles.dropdown}>
+          <TextInput
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Search verticals..."
+            placeholderTextColor="rgba(255,255,255,0.35)"
+            style={styles.search}
+            autoFocus={Platform.OS === 'web'}
+          />
+          <View style={styles.list}>
+            {filtered.map((opt) => {
+              const selected = opt.key === value;
+              return (
+                <Pressable
+                  key={opt.key}
+                  style={[styles.option, selected && styles.optionSelected]}
+                  onPress={() => {
+                    onChange(opt.key);
+                    setOpen(false);
+                    setQuery('');
+                  }}
+                >
+                  <Text
+                    style={[styles.optionText, selected && styles.optionTextSelected]}
+                  >
+                    {opt.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+            {filtered.length === 0 ? (
+              <Text style={styles.empty}>No matching verticals</Text>
+            ) : null}
+          </View>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  wrap: {
+    marginTop: 8,
+    zIndex: 30,
+  },
+  trigger: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#161622',
+    borderWidth: 1,
+    borderColor: '#2a2a3e',
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+  },
+  triggerText: {
+    color: '#e8e8f0',
+    fontSize: 13,
+    flex: 1,
+    marginRight: 8,
+  },
+  chevron: {
+    color: 'rgba(255,255,255,0.45)',
+    fontSize: 12,
+  },
+  dropdown: {
+    marginTop: 6,
+    backgroundColor: '#12121c',
+    borderWidth: 1,
+    borderColor: '#2a2a3e',
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  search: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#2a2a3e',
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    color: '#fff',
+    fontSize: 13,
+    ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as object) : null),
+  },
+  list: {
+    maxHeight: 220,
+  },
+  option: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  optionSelected: {
+    backgroundColor: 'rgba(26, 58, 110, 0.55)',
+  },
+  optionText: {
+    color: 'rgba(255,255,255,0.78)',
+    fontSize: 13,
+  },
+  optionTextSelected: {
+    color: '#c8dcff',
+    fontWeight: '600',
+  },
+  empty: {
+    color: 'rgba(255,255,255,0.4)',
+    fontSize: 12,
+    padding: 12,
+    textAlign: 'center',
+  },
+});
