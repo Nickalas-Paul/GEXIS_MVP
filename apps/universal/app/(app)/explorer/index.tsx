@@ -11,13 +11,16 @@ import {
 import Map from '@/components/Map';
 import DataFreshnessPill from '@/components/explorer/DataFreshnessPill';
 import FilterSidebar from '@/components/explorer/FilterSidebar';
+import GeographyDrillDown from '@/components/explorer/GeographyDrillDown';
 import MviLegend from '@/components/explorer/MviLegend';
+import TopMatchesList from '@/components/explorer/TopMatchesList';
 import type { MapFlyToTarget } from '@/components/Map.types';
 import { useExplorerFilters } from '@/hooks/useExplorerFilters';
 import {
   fetchGeographiesGeojson,
   type GeographyFeatureCollection,
   type GeographyFeatureProperties,
+  type GeographyListItem,
 } from '@/services/geographies';
 
 const DESKTOP_BREAKPOINT = 768;
@@ -29,6 +32,7 @@ export default function ExplorerScreen() {
     filters,
     updateFilters,
     resetFilters,
+    matched,
     matchedIsoCodes,
     filtering,
   } = useExplorerFilters();
@@ -36,7 +40,8 @@ export default function ExplorerScreen() {
   const [geojson, setGeojson] = useState<GeographyFeatureCollection | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(Platform.OS === 'web');
-  const [selected, setSelected] = useState<GeographyFeatureProperties | null>(null);
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [selectedIso, setSelectedIso] = useState<string | null>(null);
   const [flyToTarget, setFlyToTarget] = useState<MapFlyToTarget | null>(null);
 
   const dataLabel = useMemo(() => new Date().toISOString().slice(0, 10), []);
@@ -68,35 +73,79 @@ export default function ExplorerScreen() {
     };
   }, []);
 
-  const onGeographyClick = useCallback(
-    (properties: GeographyFeatureProperties, centroid: [number, number]) => {
-      setSelected(properties);
-      setFlyToTarget({
-        longitude: centroid[0],
-        latitude: centroid[1],
-        zoom: 4,
-      });
+  const selectGeography = useCallback(
+    (opts: {
+      idOrIso: string;
+      isoCode?: string | null;
+      centroid?: [number, number] | null;
+      zoom?: number;
+    }) => {
+      setSelectedKey(opts.idOrIso);
+      setSelectedIso(opts.isoCode ?? opts.idOrIso);
+      if (opts.centroid) {
+        setFlyToTarget({
+          longitude: opts.centroid[0],
+          latitude: opts.centroid[1],
+          zoom: opts.zoom ?? 4,
+        });
+      }
     },
     []
   );
 
+  const onGeographyClick = useCallback(
+    (properties: GeographyFeatureProperties, centroid: [number, number]) => {
+      const key = properties.isoCode ?? properties.id;
+      selectGeography({
+        idOrIso: key,
+        isoCode: properties.isoCode,
+        centroid,
+      });
+    },
+    [selectGeography]
+  );
+
+  const onMatchSelect = useCallback(
+    (item: GeographyListItem) => {
+      const centroid =
+        item.centroid != null
+          ? ([item.centroid.lng, item.centroid.lat] as [number, number])
+          : null;
+      selectGeography({
+        idOrIso: item.isoCode ?? item.id,
+        isoCode: item.isoCode,
+        centroid,
+      });
+    },
+    [selectGeography]
+  );
+
   const showFilters = Platform.OS === 'web' && isDesktop;
+  const showDrillDown = Platform.OS === 'web' && isDesktop && selectedKey != null;
 
   return (
     <View style={styles.container}>
       {showFilters ? (
-        <FilterSidebar
-          filters={filters}
-          onChange={updateFilters}
-          onReset={resetFilters}
-        />
+        <View style={styles.leftRail}>
+          <FilterSidebar
+            filters={filters}
+            onChange={updateFilters}
+            onReset={resetFilters}
+            style={styles.filtersInRail}
+          />
+          <TopMatchesList
+            items={matched}
+            selectedIsoCode={selectedIso}
+            onSelect={onMatchSelect}
+          />
+        </View>
       ) : null}
 
       <View style={styles.mapPane}>
         <Map
           geojson={Platform.OS === 'web' ? geojson : null}
           matchedIsoCodes={Platform.OS === 'web' ? matchedIsoCodes : null}
-          selectedIsoCode={selected?.isoCode ?? null}
+          selectedIsoCode={selectedIso}
           flyToTarget={flyToTarget}
           onGeographyClick={onGeographyClick}
         />
@@ -123,17 +172,19 @@ export default function ExplorerScreen() {
                 <Text style={styles.errorText}>{loadError}</Text>
               </View>
             ) : null}
-            {selected ? (
-              <View style={styles.selectionChip} pointerEvents="none">
-                <Text style={styles.selectionName}>{selected.name}</Text>
-                <Text style={styles.selectionScore}>
-                  {selected.overall != null ? `MVI ${selected.overall}` : 'Unscored'}
-                </Text>
-              </View>
-            ) : null}
           </>
         ) : null}
       </View>
+
+      {showDrillDown ? (
+        <GeographyDrillDown
+          geographyIdOrIso={selectedKey}
+          onClose={() => {
+            setSelectedKey(null);
+            setSelectedIso(null);
+          }}
+        />
+      ) : null}
     </View>
   );
 }
@@ -143,6 +194,17 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     backgroundColor: '#0b0b12',
+  },
+  leftRail: {
+    width: 280,
+    backgroundColor: '#0e0e16',
+    borderRightWidth: 1,
+    borderRightColor: '#1c1c2a',
+    flexDirection: 'column',
+  },
+  filtersInRail: {
+    width: '100%',
+    borderRightWidth: 0,
   },
   mapPane: {
     flex: 1,
@@ -188,27 +250,5 @@ const styles = StyleSheet.create({
   errorText: {
     color: '#ff8f8f',
     fontSize: 13,
-  },
-  selectionChip: {
-    position: 'absolute',
-    top: 16,
-    left: 16,
-    backgroundColor: 'rgba(12,12,20,0.9)',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-    zIndex: 2,
-    gap: 2,
-  },
-  selectionName: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  selectionScore: {
-    color: 'rgba(255,255,255,0.65)',
-    fontSize: 12,
   },
 });
