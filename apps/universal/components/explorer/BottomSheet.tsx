@@ -76,12 +76,12 @@ export default function BottomSheet({
 const styles = StyleSheet.create({
   root: {
     ...(Platform.OS === 'web'
-      ? { ...StyleSheet.absoluteFillObject, zIndex: 40 }
+      ? { ...StyleSheet.absoluteFill, zIndex: 40 }
       : { flex: 1 }),
     justifyContent: 'flex-end',
   },
   overlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(0,0,0,0.45)',
     zIndex: 0,
   },
