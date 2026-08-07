@@ -46,7 +46,7 @@ export default function ExplorerScreen() {
 
   const [geojson, setGeojson] = useState<GeographyFeatureCollection | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(Platform.OS === 'web');
+  const [loading, setLoading] = useState(true);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [selectedIso, setSelectedIso] = useState<string | null>(null);
   const [flyToTarget, setFlyToTarget] = useState<MapFlyToTarget | null>(null);
@@ -56,10 +56,6 @@ export default function ExplorerScreen() {
   const dataLabel = useMemo(() => new Date().toISOString().slice(0, 10), []);
 
   useEffect(() => {
-    if (Platform.OS !== 'web') {
-      setLoading(false);
-      return;
-    }
     let cancelled = false;
     setLoading(true);
     void fetchGeographiesGeojson(filters.industryVertical)
@@ -152,6 +148,7 @@ export default function ExplorerScreen() {
 
   const isWeb = Platform.OS === 'web';
   const showDesktopChrome = isWeb && isDesktop;
+  const showMobileChrome = !isDesktop;
 
   return (
     <View style={styles.container}>
@@ -173,17 +170,16 @@ export default function ExplorerScreen() {
 
       <View style={styles.mapPane}>
         <Map
-          geojson={isWeb ? geojson : null}
-          matchedIsoCodes={isWeb ? matchedIsoCodes : null}
+          geojson={geojson}
+          matchedIsoCodes={matchedIsoCodes}
           selectedIsoCode={selectedIso}
           flyToTarget={flyToTarget}
           onGeographyClick={onGeographyClick}
         />
 
-        {isWeb ? (
-          <>
+        <>
             <View
-              style={[styles.searchWrap, !isDesktop && styles.searchWrapMobile]}
+              style={[styles.searchWrap, showMobileChrome && styles.searchWrapMobile]}
               pointerEvents="box-none"
             >
               <GeographySearch geojson={geojson} onSelect={onSearchSelect} />
@@ -196,7 +192,7 @@ export default function ExplorerScreen() {
               ) : null}
             </View>
 
-            {!isDesktop ? (
+            {showMobileChrome ? (
               <Pressable
                 style={styles.mobileFilterBtn}
                 onPress={() => setFiltersOpen(true)}
@@ -220,8 +216,7 @@ export default function ExplorerScreen() {
                 <Text style={styles.errorText}>{loadError}</Text>
               </View>
             ) : null}
-          </>
-        ) : null}
+        </>
       </View>
 
       {showDesktopChrome && selectedKey ? (
@@ -232,8 +227,8 @@ export default function ExplorerScreen() {
         />
       ) : null}
 
-      {/* Mobile filter / matches sheet */}
-      {isWeb && !isDesktop ? (
+      {/* Mobile / native filter / matches sheet */}
+      {showMobileChrome ? (
         <BottomSheet
           visible={filtersOpen}
           onClose={() => setFiltersOpen(false)}
@@ -288,8 +283,8 @@ export default function ExplorerScreen() {
         </BottomSheet>
       ) : null}
 
-      {/* Mobile drill-down sheet */}
-      {isWeb && !isDesktop && selectedKey ? (
+      {/* Mobile / native drill-down sheet */}
+      {showMobileChrome && selectedKey ? (
         <BottomSheet visible onClose={closeSelection} height="70%">
           <GeographyDrillDown
             geographyIdOrIso={selectedKey}

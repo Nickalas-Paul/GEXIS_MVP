@@ -67,6 +67,52 @@ export function mviFillColorExpression(): unknown[] {
   ];
 }
 
+/**
+ * Native choropleth fill-color using `overallScore` (with `overall` fallback),
+ * matching the Mapbox style-spec stops used on device.
+ */
+export function mviFillColorExpressionNative(): unknown[] {
+  const scoreExpr: unknown[] = [
+    'coalesce',
+    ['get', 'overallScore'],
+    ['get', 'overall'],
+  ];
+  return [
+    'case',
+    [
+      'any',
+      [
+        'all',
+        ['!', ['has', 'overallScore']],
+        ['!', ['has', 'overall']],
+      ],
+      ['==', ['get', 'overallScore'], null],
+      ['==', ['typeof', ['get', 'overallScore']], 'null'],
+      [
+        'all',
+        ['==', ['typeof', ['get', 'overallScore']], 'null'],
+        ['==', ['get', 'overall'], null],
+      ],
+    ],
+    MVI_NULL_FILL,
+    [
+      'interpolate',
+      ['linear'],
+      scoreExpr,
+      20,
+      '#1e3a5f',
+      35,
+      '#1a6b5a',
+      50,
+      '#7a7a2e',
+      65,
+      '#c4651a',
+      76,
+      '#d93025',
+    ],
+  ];
+}
+
 export const MVI_LEGEND_GRADIENT = `linear-gradient(90deg, ${MVI_COLOR_STOPS.map(
   ([, c]) => c
 ).join(', ')})`;
