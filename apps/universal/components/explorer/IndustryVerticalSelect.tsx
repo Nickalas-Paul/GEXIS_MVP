@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -17,6 +18,15 @@ type Props = {
   value: string;
   onChange: (key: string) => void;
 };
+
+const webScrollStyle =
+  Platform.OS === 'web'
+    ? ({
+        overflowY: 'auto',
+        scrollbarWidth: 'thin',
+        scrollbarColor: '#3a3a52 #0e0e16',
+      } as object)
+    : null;
 
 export default function IndustryVerticalSelect({ value, onChange }: Props) {
   const [open, setOpen] = useState(false);
@@ -54,12 +64,31 @@ export default function IndustryVerticalSelect({ value, onChange }: Props) {
     };
   }, [open]);
 
+  // Inject dark scrollbar styles once on web
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const id = 'gexis-industry-vertical-scrollbar';
+    if (document.getElementById(id)) return;
+    const el = document.createElement('style');
+    el.id = id;
+    el.textContent = `
+      [data-gexis-vertical-scroll="1"]::-webkit-scrollbar { width: 6px; }
+      [data-gexis-vertical-scroll="1"]::-webkit-scrollbar-track {
+        background: #0e0e16; border-radius: 3px;
+      }
+      [data-gexis-vertical-scroll="1"]::-webkit-scrollbar-thumb {
+        background: #3a3a52; border-radius: 3px;
+      }
+      [data-gexis-vertical-scroll="1"]::-webkit-scrollbar-thumb:hover {
+        background: #55557a;
+      }
+    `;
+    document.head.appendChild(el);
+  }, []);
+
   return (
     <View ref={wrapRef} style={styles.wrap}>
-      <Pressable
-        style={styles.trigger}
-        onPress={() => setOpen((v) => !v)}
-      >
+      <Pressable style={styles.trigger} onPress={() => setOpen((v) => !v)}>
         <Text style={styles.triggerText} numberOfLines={1}>
           {verticalLabel(value)}
         </Text>
@@ -76,7 +105,14 @@ export default function IndustryVerticalSelect({ value, onChange }: Props) {
             style={styles.search}
             autoFocus={Platform.OS === 'web'}
           />
-          <View style={styles.list}>
+          <ScrollView
+            style={[styles.list, webScrollStyle]}
+            contentContainerStyle={styles.listContent}
+            nestedScrollEnabled
+            keyboardShouldPersistTaps="handled"
+            // @ts-expect-error RN web data attribute for scrollbar CSS
+            dataSet={{ gexisVerticalScroll: '1' }}
+          >
             {filtered.map((opt) => {
               const selected = opt.key === value;
               return (
@@ -100,7 +136,7 @@ export default function IndustryVerticalSelect({ value, onChange }: Props) {
             {filtered.length === 0 ? (
               <Text style={styles.empty}>No matching verticals</Text>
             ) : null}
-          </View>
+          </ScrollView>
         </View>
       ) : null}
     </View>
@@ -151,7 +187,10 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as object) : null),
   },
   list: {
-    maxHeight: 220,
+    maxHeight: 280,
+  },
+  listContent: {
+    paddingBottom: 4,
   },
   option: {
     paddingHorizontal: 12,
