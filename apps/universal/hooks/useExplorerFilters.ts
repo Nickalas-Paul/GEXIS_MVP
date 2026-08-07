@@ -24,15 +24,18 @@ export function useExplorerFilters() {
   const [matched, setMatched] = useState<GeographyListItem[]>([]);
   const [matchedIsoCodes, setMatchedIsoCodes] = useState<Set<string> | null>(null);
   const [filtering, setFiltering] = useState(false);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hydrated = useRef(false);
+  const skipNextUrlSync = useRef(true);
 
   const applyFilters = useCallback(async (next: ExplorerFilterState) => {
     setFiltering(true);
     try {
       const apiFilters = toApiFilters(next);
       const hasActive = Object.keys(apiFilters).length > 0;
-      const result = await filterGeographies(apiFilters, { limit: 200 });
+      const result = await filterGeographies(apiFilters, {
+        limit: 200,
+        vertical: next.industryVertical,
+      });
       setMatched(result.data);
       setMatchedIsoCodes(
         hasActive
@@ -50,59 +53,52 @@ export function useExplorerFilters() {
     }
   }, []);
 
-  // Hydrate from URL once on web
+  // Hydrate from URL once (read-only; does not write params)
   useEffect(() => {
     if (hydrated.current) return;
     hydrated.current = true;
     const fromUrl = parseFiltersFromParams(
       params as Record<string, string | string[] | undefined>
     );
+    skipNextUrlSync.current = true;
     setFilters(fromUrl);
-    void applyFilters(fromUrl);
-  }, [applyFilters, params]);
+  }, [params]);
 
-  const syncUrl = useCallback(
-    (next: ExplorerFilterState) => {
-      if (Platform.OS !== 'web') return;
-      const query = filtersToQueryRecord(next);
-      router.setParams({
-        vertical: query.vertical ?? undefined,
-        minPopulation: query.minPopulation ?? undefined,
-        maxCorpTaxRate: query.maxCorpTaxRate ?? undefined,
-        minTalentDensity: query.minTalentDensity ?? undefined,
-        maxCompetitorSaturation: query.maxCompetitorSaturation ?? undefined,
-        minRegulatoryEase: query.minRegulatoryEase ?? undefined,
-      });
-    },
-    [router]
-  );
+  // Sync filter state → URL query params (never during render)
+  useEffect(() => {
+    if (!hydrated.current) return;
+    if (Platform.OS !== 'web') return;
+    if (skipNextUrlSync.current) {
+      skipNextUrlSync.current = false;
+      return;
+    }
+    const query = filtersToQueryRecord(filters);
+    router.setParams({
+      vertical: query.vertical ?? undefined,
+      minPopulation: query.minPopulation ?? undefined,
+      maxCorpTaxRate: query.maxCorpTaxRate ?? undefined,
+      minTalentDensity: query.minTalentDensity ?? undefined,
+      maxCompetitorSaturation: query.maxCompetitorSaturation ?? undefined,
+      minRegulatoryEase: query.minRegulatoryEase ?? undefined,
+    });
+  }, [filters, router]);
 
-  const scheduleApply = useCallback(
-    (next: ExplorerFilterState) => {
-      syncUrl(next);
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-      debounceRef.current = setTimeout(() => {
-        void applyFilters(next);
-      }, DEBOUNCE_MS);
-    },
-    [applyFilters, syncUrl]
-  );
+  // Debounced API filter apply when filters change
+  useEffect(() => {
+    if (!hydrated.current) return;
+    const handle = setTimeout(() => {
+      void applyFilters(filters);
+    }, DEBOUNCE_MS);
+    return () => clearTimeout(handle);
+  }, [filters, applyFilters]);
 
-  const updateFilters = useCallback(
-    (patch: Partial<ExplorerFilterState>) => {
-      setFilters((prev) => {
-        const next = { ...prev, ...patch };
-        scheduleApply(next);
-        return next;
-      });
-    },
-    [scheduleApply]
-  );
+  const updateFilters = useCallback((patch: Partial<ExplorerFilterState>) => {
+    setFilters((prev) => ({ ...prev, ...patch }));
+  }, []);
 
   const resetFilters = useCallback(() => {
     setFilters(DEFAULT_FILTERS);
-    scheduleApply(DEFAULT_FILTERS);
-  }, [scheduleApply]);
+  }, []);
 
   return {
     filters,
