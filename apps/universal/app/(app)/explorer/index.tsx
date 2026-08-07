@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Platform,
+  Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -9,6 +11,7 @@ import {
 } from 'react-native';
 
 import Map from '@/components/Map';
+import BottomSheet from '@/components/explorer/BottomSheet';
 import DataFreshnessPill from '@/components/explorer/DataFreshnessPill';
 import FilterSidebar from '@/components/explorer/FilterSidebar';
 import GeographyDrillDown from '@/components/explorer/GeographyDrillDown';
@@ -47,6 +50,8 @@ export default function ExplorerScreen() {
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [selectedIso, setSelectedIso] = useState<string | null>(null);
   const [flyToTarget, setFlyToTarget] = useState<MapFlyToTarget | null>(null);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [mobileTab, setMobileTab] = useState<'filters' | 'matches'>('filters');
 
   const dataLabel = useMemo(() => new Date().toISOString().slice(0, 10), []);
 
@@ -86,6 +91,7 @@ export default function ExplorerScreen() {
     }) => {
       setSelectedKey(opts.idOrIso);
       setSelectedIso(opts.isoCode ?? opts.idOrIso);
+      setFiltersOpen(false);
       if (opts.centroid) {
         setFlyToTarget({
           longitude: opts.centroid[0],
@@ -139,12 +145,17 @@ export default function ExplorerScreen() {
     [geojson, selectGeography]
   );
 
-  const showFilters = Platform.OS === 'web' && isDesktop;
-  const showDrillDown = Platform.OS === 'web' && isDesktop && selectedKey != null;
+  const closeSelection = useCallback(() => {
+    setSelectedKey(null);
+    setSelectedIso(null);
+  }, []);
+
+  const isWeb = Platform.OS === 'web';
+  const showDesktopChrome = isWeb && isDesktop;
 
   return (
     <View style={styles.container}>
-      {showFilters ? (
+      {showDesktopChrome ? (
         <View style={styles.leftRail}>
           <FilterSidebar
             filters={filters}
@@ -162,27 +173,42 @@ export default function ExplorerScreen() {
 
       <View style={styles.mapPane}>
         <Map
-          geojson={Platform.OS === 'web' ? geojson : null}
-          matchedIsoCodes={Platform.OS === 'web' ? matchedIsoCodes : null}
+          geojson={isWeb ? geojson : null}
+          matchedIsoCodes={isWeb ? matchedIsoCodes : null}
           selectedIsoCode={selectedIso}
           flyToTarget={flyToTarget}
           onGeographyClick={onGeographyClick}
         />
 
-        {Platform.OS === 'web' ? (
+        {isWeb ? (
           <>
-            <View style={styles.searchWrap} pointerEvents="box-none">
+            <View
+              style={[styles.searchWrap, !isDesktop && styles.searchWrapMobile]}
+              pointerEvents="box-none"
+            >
               <GeographySearch geojson={geojson} onSelect={onSearchSelect} />
             </View>
+
             <View style={styles.topRight} pointerEvents="box-none">
               <DataFreshnessPill dateLabel={dataLabel} />
               {filtering ? (
                 <Text style={styles.filteringHint}>Updating filters…</Text>
               ) : null}
             </View>
+
+            {!isDesktop ? (
+              <Pressable
+                style={styles.mobileFilterBtn}
+                onPress={() => setFiltersOpen(true)}
+              >
+                <Text style={styles.mobileFilterBtnText}>Filters</Text>
+              </Pressable>
+            ) : null}
+
             <View style={styles.legendWrap} pointerEvents="none">
               <MviLegend />
             </View>
+
             {loading ? (
               <View style={styles.status} pointerEvents="none">
                 <ActivityIndicator color="#ffffff" />
@@ -198,14 +224,76 @@ export default function ExplorerScreen() {
         ) : null}
       </View>
 
-      {showDrillDown ? (
-        <GeographyDrillDown
-          geographyIdOrIso={selectedKey}
-          onClose={() => {
-            setSelectedKey(null);
-            setSelectedIso(null);
-          }}
-        />
+      {showDesktopChrome && selectedKey ? (
+        <GeographyDrillDown geographyIdOrIso={selectedKey} onClose={closeSelection} />
+      ) : null}
+
+      {/* Mobile filter / matches sheet */}
+      {isWeb && !isDesktop ? (
+        <BottomSheet
+          visible={filtersOpen}
+          onClose={() => setFiltersOpen(false)}
+          title="EXPLORE"
+          height="78%"
+        >
+          <View style={styles.mobileTabs}>
+            <Pressable
+              style={[styles.mobileTab, mobileTab === 'filters' && styles.mobileTabActive]}
+              onPress={() => setMobileTab('filters')}
+            >
+              <Text
+                style={[
+                  styles.mobileTabText,
+                  mobileTab === 'filters' && styles.mobileTabTextActive,
+                ]}
+              >
+                Filters
+              </Text>
+            </Pressable>
+            <Pressable
+              style={[styles.mobileTab, mobileTab === 'matches' && styles.mobileTabActive]}
+              onPress={() => setMobileTab('matches')}
+            >
+              <Text
+                style={[
+                  styles.mobileTabText,
+                  mobileTab === 'matches' && styles.mobileTabTextActive,
+                ]}
+              >
+                Top Matches
+              </Text>
+            </Pressable>
+          </View>
+          <ScrollView style={styles.mobileSheetScroll}>
+            {mobileTab === 'filters' ? (
+              <FilterSidebar
+                filters={filters}
+                onChange={updateFilters}
+                onReset={resetFilters}
+                style={styles.mobileFilters}
+              />
+            ) : (
+              <TopMatchesList
+                items={matched}
+                selectedIsoCode={selectedIso}
+                onSelect={onMatchSelect}
+                style={styles.mobileMatches}
+              />
+            )}
+          </ScrollView>
+        </BottomSheet>
+      ) : null}
+
+      {/* Mobile drill-down sheet */}
+      {isWeb && !isDesktop && selectedKey ? (
+        <BottomSheet visible onClose={closeSelection} height="70%">
+          <GeographyDrillDown
+            geographyIdOrIso={selectedKey}
+            onClose={closeSelection}
+            variant="sheet"
+            style={styles.mobileDrill}
+          />
+        </BottomSheet>
       ) : null}
     </View>
   );
@@ -241,6 +329,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     zIndex: 5,
   },
+  searchWrapMobile: {
+    top: 12,
+    paddingRight: 100,
+  },
   topRight: {
     position: 'absolute',
     top: 16,
@@ -252,6 +344,23 @@ const styles = StyleSheet.create({
   filteringHint: {
     color: 'rgba(255,255,255,0.55)',
     fontSize: 11,
+  },
+  mobileFilterBtn: {
+    position: 'absolute',
+    bottom: 88,
+    right: 16,
+    zIndex: 6,
+    backgroundColor: '#1a3a6e',
+    borderRadius: 999,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+  },
+  mobileFilterBtnText: {
+    color: '#c8dcff',
+    fontSize: 13,
+    fontWeight: '700',
   },
   legendWrap: {
     position: 'absolute',
@@ -281,5 +390,45 @@ const styles = StyleSheet.create({
   errorText: {
     color: '#ff8f8f',
     fontSize: 13,
+  },
+  mobileTabs: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 16,
+    marginBottom: 8,
+  },
+  mobileTab: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: '#161622',
+    alignItems: 'center',
+  },
+  mobileTabActive: {
+    backgroundColor: '#1a3a6e',
+  },
+  mobileTabText: {
+    color: 'rgba(255,255,255,0.55)',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  mobileTabTextActive: {
+    color: '#c8dcff',
+  },
+  mobileSheetScroll: {
+    flex: 1,
+  },
+  mobileFilters: {
+    width: '100%',
+    borderRightWidth: 0,
+  },
+  mobileMatches: {
+    borderTopWidth: 0,
+    minHeight: 280,
+  },
+  mobileDrill: {
+    width: '100%',
+    borderLeftWidth: 0,
+    flex: 1,
   },
 });
