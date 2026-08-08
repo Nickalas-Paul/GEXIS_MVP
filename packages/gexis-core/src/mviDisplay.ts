@@ -14,7 +14,8 @@ export type DimensionKey =
   | 'taxEnvironment'
   | 'regulatoryEase'
   | 'infrastructure'
-  | 'competitorSaturation';
+  | 'competitorSaturation'
+  | 'trajectory';
 
 export type IndicatorDirection = 'higher_is_better' | 'lower_is_better';
 export type IndicatorNormalization = 'linear' | 'log_scale';
@@ -37,6 +38,8 @@ export type DimensionDisplay = {
   /** Indicator codes that belong to this dimension (for source filtering). */
   indicatorCodes: string[];
   indicators: IndicatorDisplay[];
+  /** True when derived from trend_scores rather than raw indicators. */
+  isComposite?: boolean;
 };
 
 export const MVI_DIMENSION_DISPLAY: DimensionDisplay[] = [
@@ -235,6 +238,15 @@ export const MVI_DIMENSION_DISPLAY: DimensionDisplay[] = [
           'Higher formation rates score higher as a market-activity proxy — not industry HHI.',
       },
     ],
+  },
+  {
+    key: 'trajectory',
+    label: 'Trajectory',
+    description:
+      'Composite momentum score derived from trend direction and rate across all other dimensions',
+    indicatorCodes: [],
+    indicators: [],
+    isComposite: true,
   },
 ];
 

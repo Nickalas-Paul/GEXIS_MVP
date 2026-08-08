@@ -15,7 +15,8 @@ export type DimensionKey =
   | 'taxEnvironment'
   | 'regulatoryEase'
   | 'infrastructure'
-  | 'competitorSaturation';
+  | 'competitorSaturation'
+  | 'trajectory';
 
 export interface IndicatorMeta {
   source: string;
@@ -30,6 +31,8 @@ export interface DimensionMeta {
   label: string;
   description: string;
   indicators: IndicatorMeta[];
+  /** True when the dimension is derived from trend_scores, not raw indicators. */
+  isComposite?: boolean;
 }
 
 export const MVI_DIMENSIONS: DimensionMeta[] = [
@@ -177,6 +180,14 @@ export const MVI_DIMENSIONS: DimensionMeta[] = [
       },
     ],
   },
+  {
+    key: 'trajectory',
+    label: 'Trajectory',
+    description:
+      'Composite momentum score derived from trend direction and rate across all other dimensions',
+    indicators: [],
+    isComposite: true,
+  },
 ];
 
 export const SOURCE_CATALOG: Record<
@@ -225,139 +236,187 @@ export interface IndustryVertical {
  * Industry vertical weight profiles for on-the-fly overall MVI recomputation.
  * COUPLING: keep in sync with server/workers/scoring_config.py INDUSTRY_VERTICALS.
  * Dimension scores are stored once (equal-weight); overall is reweighted at query time.
+ *
+ * Trajectory multipliers (relative to avg of the original six):
+ *   tech_saas / telecom → 1.3; manufacturing / energy → 0.7; else → 1.0
  */
+function withTrajectory(
+  weights: Omit<DimensionWeights, 'trajectory'>,
+  trajectoryMult: number
+): DimensionWeights {
+  const values = Object.values(weights);
+  const avg = values.reduce((a, b) => a + b, 0) / values.length;
+  return {
+    ...weights,
+    trajectory: Math.round(avg * trajectoryMult * 1000) / 1000,
+  };
+}
+
 export const INDUSTRY_VERTICALS: IndustryVertical[] = [
   {
     key: 'all',
     label: 'All Industries',
-    weights: {
-      marketSizeAndGrowth: 0.167,
-      talentDensity: 0.167,
-      taxEnvironment: 0.167,
-      regulatoryEase: 0.167,
-      infrastructure: 0.167,
-      competitorSaturation: 0.167,
-    },
+    weights: withTrajectory(
+      {
+        marketSizeAndGrowth: 0.167,
+        talentDensity: 0.167,
+        taxEnvironment: 0.167,
+        regulatoryEase: 0.167,
+        infrastructure: 0.167,
+        competitorSaturation: 0.167,
+      },
+      1.0
+    ),
   },
   {
     key: 'tech_saas',
     label: 'Technology & SaaS',
-    weights: {
-      marketSizeAndGrowth: 0.15,
-      talentDensity: 0.25,
-      taxEnvironment: 0.15,
-      regulatoryEase: 0.1,
-      infrastructure: 0.2,
-      competitorSaturation: 0.15,
-    },
+    weights: withTrajectory(
+      {
+        marketSizeAndGrowth: 0.15,
+        talentDensity: 0.25,
+        taxEnvironment: 0.15,
+        regulatoryEase: 0.1,
+        infrastructure: 0.2,
+        competitorSaturation: 0.15,
+      },
+      1.3
+    ),
   },
   {
     key: 'financial',
     label: 'Financial Services',
-    weights: {
-      marketSizeAndGrowth: 0.2,
-      talentDensity: 0.15,
-      taxEnvironment: 0.2,
-      regulatoryEase: 0.25,
-      infrastructure: 0.1,
-      competitorSaturation: 0.1,
-    },
+    weights: withTrajectory(
+      {
+        marketSizeAndGrowth: 0.2,
+        talentDensity: 0.15,
+        taxEnvironment: 0.2,
+        regulatoryEase: 0.25,
+        infrastructure: 0.1,
+        competitorSaturation: 0.1,
+      },
+      1.0
+    ),
   },
   {
     key: 'manufacturing',
     label: 'Manufacturing',
-    weights: {
-      marketSizeAndGrowth: 0.15,
-      talentDensity: 0.1,
-      taxEnvironment: 0.15,
-      regulatoryEase: 0.2,
-      infrastructure: 0.25,
-      competitorSaturation: 0.15,
-    },
+    weights: withTrajectory(
+      {
+        marketSizeAndGrowth: 0.15,
+        talentDensity: 0.1,
+        taxEnvironment: 0.15,
+        regulatoryEase: 0.2,
+        infrastructure: 0.25,
+        competitorSaturation: 0.15,
+      },
+      0.7
+    ),
   },
   {
     key: 'healthcare',
     label: 'Healthcare & Life Sciences',
-    weights: {
-      marketSizeAndGrowth: 0.2,
-      talentDensity: 0.2,
-      taxEnvironment: 0.1,
-      regulatoryEase: 0.25,
-      infrastructure: 0.15,
-      competitorSaturation: 0.1,
-    },
+    weights: withTrajectory(
+      {
+        marketSizeAndGrowth: 0.2,
+        talentDensity: 0.2,
+        taxEnvironment: 0.1,
+        regulatoryEase: 0.25,
+        infrastructure: 0.15,
+        competitorSaturation: 0.1,
+      },
+      1.0
+    ),
   },
   {
     key: 'ecommerce',
     label: 'E-Commerce & Retail',
-    weights: {
-      marketSizeAndGrowth: 0.25,
-      talentDensity: 0.1,
-      taxEnvironment: 0.15,
-      regulatoryEase: 0.1,
-      infrastructure: 0.25,
-      competitorSaturation: 0.15,
-    },
+    weights: withTrajectory(
+      {
+        marketSizeAndGrowth: 0.25,
+        talentDensity: 0.1,
+        taxEnvironment: 0.15,
+        regulatoryEase: 0.1,
+        infrastructure: 0.25,
+        competitorSaturation: 0.15,
+      },
+      1.0
+    ),
   },
   {
     key: 'energy',
     label: 'Energy & Renewables',
-    weights: {
-      marketSizeAndGrowth: 0.15,
-      talentDensity: 0.1,
-      taxEnvironment: 0.15,
-      regulatoryEase: 0.25,
-      infrastructure: 0.25,
-      competitorSaturation: 0.1,
-    },
+    weights: withTrajectory(
+      {
+        marketSizeAndGrowth: 0.15,
+        talentDensity: 0.1,
+        taxEnvironment: 0.15,
+        regulatoryEase: 0.25,
+        infrastructure: 0.25,
+        competitorSaturation: 0.1,
+      },
+      0.7
+    ),
   },
   {
     key: 'professional',
     label: 'Professional Services',
-    weights: {
-      marketSizeAndGrowth: 0.15,
-      talentDensity: 0.3,
-      taxEnvironment: 0.15,
-      regulatoryEase: 0.15,
-      infrastructure: 0.1,
-      competitorSaturation: 0.15,
-    },
+    weights: withTrajectory(
+      {
+        marketSizeAndGrowth: 0.15,
+        talentDensity: 0.3,
+        taxEnvironment: 0.15,
+        regulatoryEase: 0.15,
+        infrastructure: 0.1,
+        competitorSaturation: 0.15,
+      },
+      1.0
+    ),
   },
   {
     key: 'logistics',
     label: 'Logistics & Supply Chain',
-    weights: {
-      marketSizeAndGrowth: 0.2,
-      talentDensity: 0.05,
-      taxEnvironment: 0.15,
-      regulatoryEase: 0.15,
-      infrastructure: 0.35,
-      competitorSaturation: 0.1,
-    },
+    weights: withTrajectory(
+      {
+        marketSizeAndGrowth: 0.2,
+        talentDensity: 0.05,
+        taxEnvironment: 0.15,
+        regulatoryEase: 0.15,
+        infrastructure: 0.35,
+        competitorSaturation: 0.1,
+      },
+      1.0
+    ),
   },
   {
     key: 'telecom',
     label: 'Telecommunications',
-    weights: {
-      marketSizeAndGrowth: 0.2,
-      talentDensity: 0.15,
-      taxEnvironment: 0.1,
-      regulatoryEase: 0.2,
-      infrastructure: 0.25,
-      competitorSaturation: 0.1,
-    },
+    weights: withTrajectory(
+      {
+        marketSizeAndGrowth: 0.2,
+        talentDensity: 0.15,
+        taxEnvironment: 0.1,
+        regulatoryEase: 0.2,
+        infrastructure: 0.25,
+        competitorSaturation: 0.1,
+      },
+      1.3
+    ),
   },
   {
     key: 'consumer_goods',
     label: 'Consumer Goods & CPG',
-    weights: {
-      marketSizeAndGrowth: 0.25,
-      talentDensity: 0.1,
-      taxEnvironment: 0.1,
-      regulatoryEase: 0.15,
-      infrastructure: 0.2,
-      competitorSaturation: 0.2,
-    },
+    weights: withTrajectory(
+      {
+        marketSizeAndGrowth: 0.25,
+        talentDensity: 0.1,
+        taxEnvironment: 0.1,
+        regulatoryEase: 0.15,
+        infrastructure: 0.2,
+        competitorSaturation: 0.2,
+      },
+      1.0
+    ),
   },
 ];
 
