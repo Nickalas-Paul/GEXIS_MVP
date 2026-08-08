@@ -132,6 +132,77 @@ export async function fetchGeographyById(
   return json.data;
 }
 
+export type QuickFacts = {
+  population: number | null;
+  gdpPpp: number | null;
+  corpTaxRate: number | null;
+  regulatoryQuality: number | null;
+  easeOfBusiness: string | null;
+  language: string | null;
+  currency: string | null;
+};
+
+export type MviSourceRef = {
+  year: number;
+  source: string;
+  indicator: string;
+};
+
+export type GeographyDetail = {
+  id: string;
+  name: string;
+  isoCode: string | null;
+  regionType: string;
+  region: string | null;
+  centroid: { lat: number; lng: number } | null;
+  bbox: {
+    west: number;
+    south: number;
+    east: number;
+    north: number;
+  } | null;
+  population: number | null;
+  gdpPpp: number | null;
+  geometry: GeoJSON.Geometry | null;
+  mvi: {
+    overall: number | null;
+    dimensions: {
+      marketSizeAndGrowth: number | null;
+      talentDensity: number | null;
+      taxEnvironment: number | null;
+      regulatoryEase: number | null;
+      infrastructure: number | null;
+      competitorSaturation: number | null;
+    } | null;
+    confidence: 'high' | 'medium' | 'low' | null;
+    dataFreshness: string | null;
+    calculatedAt: string | null;
+    vertical: string;
+    sources: MviSourceRef[];
+  } | null;
+  quickFacts: QuickFacts | null;
+};
+
+/** Fetch single geography with full MVI breakdown and Quick Facts. */
+export async function getGeographyDetail(
+  id: string,
+  vertical?: string
+): Promise<GeographyDetail> {
+  const params = new URLSearchParams();
+  if (vertical) params.set('vertical', vertical);
+  const qs = params.toString() ? `?${params.toString()}` : '';
+  const response = await fetch(
+    `${getApiUrl()}/api/geographies/${encodeURIComponent(id)}${qs}`
+  );
+  const json = await parseJson<ApiEnvelope<GeographyDetail>>(response);
+  const data = json.data;
+  // Normalize sources array (API may omit on sparse rows)
+  if (data.mvi && !Array.isArray(data.mvi.sources)) {
+    data.mvi.sources = [];
+  }
+  return data;
+}
+
 /** Approximate centroid from a GeoJSON geometry (bbox midpoint). */
 export function geometryCentroid(
   geometry: GeoJSON.Geometry | null | undefined
