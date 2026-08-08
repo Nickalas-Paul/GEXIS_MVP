@@ -10,11 +10,28 @@ import { pool } from '../config/database';
 import {
   computeWeightedOverall,
   DEFAULT_VERTICAL,
+  DimensionKey,
+  MVI_DIMENSIONS,
   MVI_SCORING_VERSION,
   resolveVerticalKey,
   STORED_MVI_VERTICAL,
 } from '../config/mvi';
 import { apiError, apiResponse } from '../utils/response';
+
+const DIMENSION_KEYS: DimensionKey[] = MVI_DIMENSIONS.map((d) => d.key);
+
+type TrendHorizon = '2yr' | '5yr';
+
+function parseHorizon(raw: unknown): TrendHorizon | null {
+  if (raw === '2yr' || raw === '5yr') return raw;
+  return null;
+}
+
+function numOrNull(value: unknown): number | null {
+  if (value == null) return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
 
 const router = Router();
 
@@ -461,6 +478,11 @@ router.get('/search', async (req: Request, res: Response) => {
 router.get('/geojson', async (req: Request, res: Response) => {
   try {
     const vertical = parseVertical(req.query.vertical);
+    const horizon = parseHorizon(req.query.horizon);
+    if (req.query.horizon !== undefined && horizon == null) {
+      res.status(400).json(apiError('horizon must be 2yr or 5yr'));
+      return;
+    }
     const simplified =
       req.query.simplified === undefined
         ? true
@@ -501,9 +523,55 @@ router.get('/geojson', async (req: Request, res: Response) => {
       [STORED_MVI_VERTICAL]
     );
 
+    /** geography_id → dimension → projected score */
+    const projectedByGeo = new Map<string, Partial<Record<DimensionKey, number>>>();
+    if (horizon) {
+      const projCol =
+        horizon === '2yr' ? 'projected_2yr' : 'projected_5yr';
+      const trendResult = await pool.query<{
+        geography_id: string;
+        dimension: string;
+        projected: string | null;
+      }>(
+        `
+        SELECT
+          geography_id::text AS geography_id,
+          dimension,
+          ${projCol}::text AS projected
+        FROM trend_scores
+        WHERE ${projCol} IS NOT NULL
+        `
+      );
+      for (const row of trendResult.rows) {
+        const dim = row.dimension as DimensionKey;
+        if (!DIMENSION_KEYS.includes(dim)) continue;
+        const projected = numOrNull(row.projected);
+        if (projected == null) continue;
+        let bucket = projectedByGeo.get(row.geography_id);
+        if (!bucket) {
+          bucket = {};
+          projectedByGeo.set(row.geography_id, bucket);
+        }
+        bucket[dim] = projected;
+      }
+    }
+
     const features = result.rows.map((row) => {
       const dims = row.dimensions ?? ({} as MviDimensions);
-      const overall = computeWeightedOverall(dims, vertical);
+      let overallDims: Partial<Record<DimensionKey, number | null>> = dims;
+      if (horizon) {
+        const projections = projectedByGeo.get(row.id);
+        if (projections) {
+          overallDims = { ...dims };
+          for (const key of DIMENSION_KEYS) {
+            if (projections[key] != null) {
+              overallDims[key] = projections[key]!;
+            }
+            // else keep current dimension score (or null)
+          }
+        }
+      }
+      const overall = computeWeightedOverall(overallDims, vertical);
       return {
         type: 'Feature',
         id: row.iso_code ?? row.id,
@@ -513,15 +581,16 @@ router.get('/geojson', async (req: Request, res: Response) => {
           isoCode: row.iso_code,
           overall,
           overallScore: overall,
-          marketSizeAndGrowth: dims.marketSizeAndGrowth ?? null,
-          talentDensity: dims.talentDensity ?? null,
-          taxEnvironment: dims.taxEnvironment ?? null,
-          regulatoryEase: dims.regulatoryEase ?? null,
-          infrastructure: dims.infrastructure ?? null,
-          competitorSaturation: dims.competitorSaturation ?? null,
+          marketSizeAndGrowth: overallDims.marketSizeAndGrowth ?? null,
+          talentDensity: overallDims.talentDensity ?? null,
+          taxEnvironment: overallDims.taxEnvironment ?? null,
+          regulatoryEase: overallDims.regulatoryEase ?? null,
+          infrastructure: overallDims.infrastructure ?? null,
+          competitorSaturation: overallDims.competitorSaturation ?? null,
           confidence: row.confidence,
           population: row.population != null ? Number(row.population) : null,
           vertical,
+          horizon: horizon ?? null,
         },
         geometry: row.geometry_geojson ? JSON.parse(row.geometry_geojson) : null,
       };
@@ -531,7 +600,11 @@ router.get('/geojson', async (req: Request, res: Response) => {
     res.json({
       type: 'FeatureCollection',
       features,
-      meta: { vertical, dataVersion: MVI_SCORING_VERSION },
+      meta: {
+        vertical,
+        dataVersion: MVI_SCORING_VERSION,
+        horizon: horizon ?? null,
+      },
     });
   } catch (err) {
     console.error('[geographies] geojson error:', err);
@@ -697,6 +770,124 @@ router.post('/filter', async (req: Request, res: Response) => {
     );
   } catch (err) {
     console.error('[geographies] filter error:', err);
+    res.status(500).json(apiError('Internal server error'));
+  }
+});
+
+/** GET /api/geographies/:id/trends — per-dimension trend vectors */
+router.get('/:id/trends', async (req: Request, res: Response) => {
+  try {
+    const id = String(req.params.id ?? '').trim();
+    const isIso = /^[A-Za-z]{3}$/.test(id);
+
+    const geoResult = await pool.query<{
+      id: string;
+      name: string;
+      iso_code: string | null;
+    }>(
+      `
+      SELECT id, name, iso_code
+      FROM geographies
+      WHERE ${isIso ? 'upper(iso_code) = upper($1)' : 'id = $1::uuid'}
+      LIMIT 1
+      `,
+      [isIso ? id.toUpperCase() : id]
+    );
+
+    if (geoResult.rows.length === 0) {
+      res.status(404).json(apiError('Geography not found'));
+      return;
+    }
+
+    const geo = geoResult.rows[0];
+    const trendResult = await pool.query<{
+      dimension: string;
+      direction: string;
+      annualized_rate: string | null;
+      acceleration: string | null;
+      current_score: string | null;
+      projected_2yr: string | null;
+      projected_5yr: string | null;
+      confidence_lower_2yr: string | null;
+      confidence_upper_2yr: string | null;
+      confidence_lower_5yr: string | null;
+      confidence_upper_5yr: string | null;
+      trend_confidence: string;
+      data_points: number;
+      year_range_start: number | null;
+      year_range_end: number | null;
+    }>(
+      `
+      SELECT
+        dimension,
+        direction,
+        annualized_rate,
+        acceleration,
+        current_score,
+        projected_2yr,
+        projected_5yr,
+        confidence_lower_2yr,
+        confidence_upper_2yr,
+        confidence_lower_5yr,
+        confidence_upper_5yr,
+        trend_confidence,
+        data_points,
+        year_range_start,
+        year_range_end
+      FROM trend_scores
+      WHERE geography_id = $1
+      `,
+      [geo.id]
+    );
+
+    const byDim = new Map(trendResult.rows.map((r) => [r.dimension, r]));
+    const trends: Record<string, unknown> = {};
+    for (const key of DIMENSION_KEYS) {
+      const row = byDim.get(key);
+      if (!row) {
+        trends[key] = null;
+        continue;
+      }
+      const start = row.year_range_start;
+      const end = row.year_range_end;
+      trends[key] = {
+        direction: row.direction,
+        annualizedRate: numOrNull(row.annualized_rate),
+        acceleration: numOrNull(row.acceleration),
+        currentScore: numOrNull(row.current_score),
+        projected2yr: numOrNull(row.projected_2yr),
+        projected5yr: numOrNull(row.projected_5yr),
+        confidence: {
+          lower2yr: numOrNull(row.confidence_lower_2yr),
+          upper2yr: numOrNull(row.confidence_upper_2yr),
+          lower5yr: numOrNull(row.confidence_lower_5yr),
+          upper5yr: numOrNull(row.confidence_upper_5yr),
+        },
+        trendConfidence: row.trend_confidence,
+        dataPoints: row.data_points,
+        yearRange:
+          start != null && end != null ? ([start, end] as [number, number]) : null,
+      };
+    }
+
+    res.json(
+      apiResponse({
+        isoCode: geo.iso_code,
+        name: geo.name,
+        trends,
+      })
+    );
+  } catch (err) {
+    console.error('[geographies] trends error:', err);
+    if (
+      err &&
+      typeof err === 'object' &&
+      'code' in err &&
+      (err as { code?: string }).code === '22P02'
+    ) {
+      res.status(404).json(apiError('Geography not found'));
+      return;
+    }
     res.status(500).json(apiError('Internal server error'));
   }
 });
