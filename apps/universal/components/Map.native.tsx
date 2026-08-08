@@ -31,23 +31,6 @@ export default function Map({
   const cameraRef = useRef<MapboxGL.Camera>(null);
   const fillColor = useMemo(() => mviFillColorExpressionNative(), []);
 
-  useEffect(() => {
-    console.log(
-      '[Map.native] geojson prop:',
-      geojson ? geojson.features.length + ' features' : 'null'
-    );
-    console.log(
-      '[Map.native] matchedIsoCodes:',
-      matchedIsoCodes ? matchedIsoCodes.size + ' codes' : 'null'
-    );
-    if (geojson && geojson.features.length > 0) {
-      console.log(
-        '[Map.native] First feature properties:',
-        JSON.stringify(geojson.features[0].properties)
-      );
-    }
-  }, [geojson, matchedIsoCodes]);
-
   const fillOpacity = useMemo(() => {
     const matchedList = matchedIsoCodes ? Array.from(matchedIsoCodes) : null;
     if (matchedList == null) return 0.7;

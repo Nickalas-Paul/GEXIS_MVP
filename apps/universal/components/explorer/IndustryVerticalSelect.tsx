@@ -91,11 +91,7 @@ export default function IndustryVerticalSelect({ value, onChange }: Props) {
       <Pressable
         style={styles.trigger}
         hitSlop={8}
-        onPress={() => {
-          // eslint-disable-next-line no-console
-          console.log('[Dropdown] onPress fired, open ->', !open);
-          setOpen((v) => !v);
-        }}
+        onPress={() => setOpen((v) => !v)}
       >
         <Text style={styles.triggerText} numberOfLines={1}>
           {verticalLabel(value)}
@@ -131,8 +127,6 @@ export default function IndustryVerticalSelect({ value, onChange }: Props) {
                     selected && styles.optionSelected,
                   ])}
                   onPress={() => {
-                    // eslint-disable-next-line no-console
-                    console.log('[Dropdown] option onPress:', opt.key);
                     onChange(opt.key);
                     setOpen(false);
                     setQuery('');

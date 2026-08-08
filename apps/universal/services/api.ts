@@ -19,19 +19,15 @@ export function resolveApiUrl(): string {
   const primary = ENV_URL.trim() || 'http://localhost:3001';
 
   if (Platform.OS === 'web') {
-    console.log('[API] Resolved URL:', primary);
     return primary;
   }
 
   // Native: prefer non-localhost URL so physical devices can reach the API
   if (!isLocalhost(primary)) {
-    console.log('[API] Resolved URL:', primary);
     return primary;
   }
   if (ENV_LAN_URL.trim()) {
-    const lan = ENV_LAN_URL.trim();
-    console.log('[API] Resolved URL:', lan);
-    return lan;
+    return ENV_LAN_URL.trim();
   }
 
   if (__DEV__) {
@@ -39,7 +35,6 @@ export function resolveApiUrl(): string {
       '[api] EXPO_PUBLIC_API_URL is localhost; set a LAN IP (e.g. http://192.168.x.x:3001) for device testing.'
     );
   }
-  console.log('[API] Resolved URL:', primary);
   return primary;
 }
 

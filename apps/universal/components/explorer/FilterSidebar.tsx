@@ -1,6 +1,5 @@
 import { useId, type ReactNode } from 'react';
 import {
-  Alert,
   Platform,
   Pressable,
   StyleSheet,
@@ -131,19 +130,6 @@ export default function FilterSidebar({ filters, onChange, onReset, style }: Pro
 
       <View style={StyleSheet.flatten([styles.row, styles.verticalRow])}>
         <Text style={styles.rowLabel}>Industry Vertical</Text>
-        {/* Temporary native touch probe — remove after device confirm */}
-        {Platform.OS !== 'web' ? (
-          <Pressable
-            style={styles.tapProbe}
-            onPress={() => {
-              // eslint-disable-next-line no-console
-              console.log('[Filters] simple tap test fired');
-              Alert.alert('tap works');
-            }}
-          >
-            <Text style={styles.tapProbeText}>Tap test</Text>
-          </Pressable>
-        ) : null}
         <IndustryVerticalSelect
           value={filters.industryVertical}
           onChange={(industryVertical) => onChange({ industryVertical })}
@@ -258,19 +244,6 @@ const styles = StyleSheet.create({
   verticalRow: {
     zIndex: 40,
     elevation: 40,
-  },
-  tapProbe: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    marginBottom: 4,
-    borderRadius: 6,
-    backgroundColor: '#1a3a6e',
-  },
-  tapProbeText: {
-    color: '#c8dcff',
-    fontSize: 12,
-    fontWeight: '600',
   },
   rowHeader: {
     flexDirection: 'row',
