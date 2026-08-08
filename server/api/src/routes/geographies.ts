@@ -4,7 +4,7 @@
  * Static paths (/search, /geojson, /filter) MUST be registered before /:id.
  */
 
-import { getQuickFacts } from '@gexis/gexis-core';
+import { canUseHorizon, getQuickFacts, isGatingEnabled } from '@gexis/gexis-core';
 import { Router, Request, Response } from 'express';
 import { pool } from '../config/database';
 import {
@@ -16,6 +16,9 @@ import {
   resolveVerticalKey,
   STORED_MVI_VERTICAL,
 } from '../config/mvi';
+import { optionalAuth } from '../middleware/optionalAuth';
+import { requireFilterAccess } from '../middleware/requireFilterAccess';
+import { requireTier } from '../middleware/requireTier';
 import { apiError, apiResponse } from '../utils/response';
 
 const DIMENSION_KEYS: DimensionKey[] = MVI_DIMENSIONS.map((d) => d.key);
@@ -529,11 +532,22 @@ router.get('/search', async (req: Request, res: Response) => {
 });
 
 /** GET /api/geographies/geojson — FeatureCollection for Mapbox */
-router.get('/geojson', async (req: Request, res: Response) => {
+router.get('/geojson', optionalAuth, async (req: Request, res: Response) => {
   try {
     const vertical = parseVertical(req.query.vertical);
-    const horizon = parseHorizon(req.query.horizon);
-    if (req.query.horizon !== undefined && horizon == null) {
+    let horizonQuery = req.query.horizon;
+    if (isGatingEnabled()) {
+      const tier = req.user?.subscriptionTier ?? 'free';
+      if (
+        horizonQuery !== undefined &&
+        !canUseHorizon(tier, String(horizonQuery))
+      ) {
+        // Free / anonymous: ignore projected horizons (treat as current).
+        horizonQuery = undefined;
+      }
+    }
+    const horizon = parseHorizon(horizonQuery);
+    if (horizonQuery !== undefined && horizon == null) {
       res.status(400).json(apiError('horizon must be 2yr or 5yr'));
       return;
     }
@@ -633,7 +647,7 @@ router.get('/geojson', async (req: Request, res: Response) => {
  * maxCorpTaxRate joins raw_indicators for the latest tax_foundation corp_tax_rate
  * (raw percent), matching the mockup filter semantics.
  */
-router.post('/filter', async (req: Request, res: Response) => {
+router.post('/filter', optionalAuth, requireFilterAccess, async (req: Request, res: Response) => {
   try {
     const body = req.body ?? {};
     const vertical = parseVertical(body.vertical);
@@ -884,7 +898,7 @@ router.post('/filter', async (req: Request, res: Response) => {
 });
 
 /** GET /api/geographies/:id/trends — per-dimension trend vectors */
-router.get('/:id/trends', async (req: Request, res: Response) => {
+router.get('/:id/trends', optionalAuth, requireTier('pro'), async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id ?? '').trim();
     const isIso = /^[A-Za-z]{3}$/.test(id);

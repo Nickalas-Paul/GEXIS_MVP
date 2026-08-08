@@ -20,6 +20,8 @@ import {
   resolveVerticalKey,
   STORED_MVI_VERTICAL,
 } from '../config/mvi';
+import { optionalAuth } from '../middleware/optionalAuth';
+import { requireTier } from '../middleware/requireTier';
 import { apiError } from '../utils/response';
 
 const router = Router();
@@ -448,7 +450,7 @@ function buildPdf(bundle: ExportBundle): Promise<Buffer> {
 }
 
 /** GET /api/exports/geography/:id/pdf */
-router.get('/geography/:id/pdf', async (req: Request, res: Response) => {
+router.get('/geography/:id/pdf', optionalAuth, requireTier('pro'), async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id ?? '').trim();
     const bundle = await loadExportBundle(id, req.query.vertical);
@@ -472,7 +474,7 @@ router.get('/geography/:id/pdf', async (req: Request, res: Response) => {
 });
 
 /** GET /api/exports/geography/:id/csv */
-router.get('/geography/:id/csv', async (req: Request, res: Response) => {
+router.get('/geography/:id/csv', optionalAuth, requireTier('pro'), async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id ?? '').trim();
     const bundle = await loadExportBundle(id, req.query.vertical);
@@ -496,7 +498,7 @@ router.get('/geography/:id/csv', async (req: Request, res: Response) => {
 });
 
 /** GET /api/exports/compare/csv?compare=DEU,SGP,IRL */
-router.get('/compare/csv', async (req: Request, res: Response) => {
+router.get('/compare/csv', optionalAuth, requireTier('pro'), async (req: Request, res: Response) => {
   try {
     const raw = String(req.query.compare ?? '').trim();
     const isos = [
