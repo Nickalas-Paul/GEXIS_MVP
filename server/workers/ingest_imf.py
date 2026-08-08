@@ -26,7 +26,7 @@ from config import LOGS_DIR
 from db import get_cursor, load_geography_iso_map, upsert_indicator
 
 SOURCE = "imf_weo"
-YEAR_MIN = 2020
+YEAR_MIN = 2000
 YEAR_MAX = 2024
 SDMX_BASE = "https://api.imf.org/external/sdmx/3.0/data/dataflow/IMF.RES/WEO/~/*"
 

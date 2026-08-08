@@ -23,8 +23,7 @@ from config import LOGS_DIR
 from db import get_cursor, load_geography_iso_map, upsert_indicator
 
 SOURCE = "world_bank"
-DEFAULT_DATE_RANGE = "2020:2024"
-WGI_DATE_RANGE = "2014:2024"
+HISTORICAL_DATE_RANGE = "2000:2024"
 BASE_URL = "https://api.worldbank.org/v2/country/all/indicator/{code}"
 REQUEST_TIMEOUT_SEC = 180
 MAX_RETRIES = 3
@@ -32,35 +31,35 @@ MAX_RETRIES = 3
 # (store_code, api_code, name, unit, date_range)
 # api_code is used for the HTTP fetch; store_code is written to raw_indicators.
 INDICATORS = [
-    ("NY.GDP.MKTP.CD", "NY.GDP.MKTP.CD", "GDP (current US$)", "USD", DEFAULT_DATE_RANGE),
+    ("NY.GDP.MKTP.CD", "NY.GDP.MKTP.CD", "GDP (current US$)", "USD", HISTORICAL_DATE_RANGE),
     (
         "NY.GDP.MKTP.KD.ZG",
         "NY.GDP.MKTP.KD.ZG",
         "GDP growth (annual %)",
         "percent",
-        DEFAULT_DATE_RANGE,
+        HISTORICAL_DATE_RANGE,
     ),
-    ("SP.POP.TOTL", "SP.POP.TOTL", "Population, total", "count", DEFAULT_DATE_RANGE),
+    ("SP.POP.TOTL", "SP.POP.TOTL", "Population, total", "count", HISTORICAL_DATE_RANGE),
     (
         "LP.LPI.OVRL.XQ",
         "LP.LPI.OVRL.XQ",
         "Logistics Performance Index",
         "index_score",
-        DEFAULT_DATE_RANGE,
+        HISTORICAL_DATE_RANGE,
     ),
     (
         "IT.NET.USER.ZS",
         "IT.NET.USER.ZS",
         "Internet users (% of population)",
         "percent",
-        DEFAULT_DATE_RANGE,
+        HISTORICAL_DATE_RANGE,
     ),
     (
         "IC.BUS.NDNS.ZS",
         "IC.BUS.NDNS.ZS",
         "New business density",
         "per_1000_people",
-        DEFAULT_DATE_RANGE,
+        HISTORICAL_DATE_RANGE,
     ),
     # Worldwide Governance Indicators (0-100 scores; stored as canonical PER.RNK codes)
     (
@@ -68,21 +67,21 @@ INDICATORS = [
         "GOV_WGI_RQ.SC",
         "Regulatory Quality — Percentile Rank",
         "percentile",
-        WGI_DATE_RANGE,
+        HISTORICAL_DATE_RANGE,
     ),
     (
         "GE.PER.RNK",
         "GOV_WGI_GE.SC",
         "Government Effectiveness — Percentile Rank",
         "percentile",
-        WGI_DATE_RANGE,
+        HISTORICAL_DATE_RANGE,
     ),
     (
         "RL.PER.RNK",
         "GOV_WGI_RL.SC",
         "Rule of Law — Percentile Rank",
         "percentile",
-        WGI_DATE_RANGE,
+        HISTORICAL_DATE_RANGE,
     ),
 ]
 
@@ -103,46 +102,70 @@ logger = logging.getLogger("ingest_world_bank")
 
 
 def fetch_indicator(api_code: str, date_range: str) -> list[dict]:
+    """Fetch all pages for an indicator/date range from the World Bank API."""
     url = BASE_URL.format(code=api_code)
-    params = {"format": "json", "per_page": 20000, "date": date_range}
+    all_rows: list[dict] = []
+    page = 1
+    pages = 1
     data_url = f"{url}?format=json&per_page=20000&date={date_range}"
-    logger.info("Fetching %s", data_url)
 
-    last_error: Optional[Exception] = None
-    for attempt in range(1, MAX_RETRIES + 1):
-        try:
-            response = requests.get(url, params=params, timeout=REQUEST_TIMEOUT_SEC)
-            response.raise_for_status()
-            payload = response.json()
-            if not isinstance(payload, list) or len(payload) < 2 or payload[1] is None:
-                # Detect explicit API error messages
-                if (
-                    isinstance(payload, list)
-                    and payload
-                    and isinstance(payload[0], dict)
-                    and payload[0].get("message")
-                ):
-                    logger.warning("API message for %s: %s", api_code, payload[0]["message"])
+    while page <= pages:
+        params = {
+            "format": "json",
+            "per_page": 20000,
+            "date": date_range,
+            "page": page,
+        }
+        logger.info("Fetching %s (page %s)", data_url, page)
+
+        last_error: Optional[Exception] = None
+        payload = None
+        for attempt in range(1, MAX_RETRIES + 1):
+            try:
+                response = requests.get(url, params=params, timeout=REQUEST_TIMEOUT_SEC)
+                response.raise_for_status()
+                payload = response.json()
+                break
+            except Exception as exc:
+                last_error = exc
+                logger.warning(
+                    "Fetch attempt %s/%s failed for %s page %s: %s",
+                    attempt,
+                    MAX_RETRIES,
+                    api_code,
+                    page,
+                    exc,
+                )
+                if attempt < MAX_RETRIES:
+                    time.sleep(2 * attempt)
+
+        if payload is None:
+            assert last_error is not None
+            raise last_error
+
+        if not isinstance(payload, list) or len(payload) < 2 or payload[1] is None:
+            if (
+                isinstance(payload, list)
+                and payload
+                and isinstance(payload[0], dict)
+                and payload[0].get("message")
+            ):
+                logger.warning("API message for %s: %s", api_code, payload[0]["message"])
+            if page == 1:
                 logger.warning("No data rows for indicator %s", api_code)
-                return []
-            rows = payload[1]
-            for row in rows:
-                row["_data_url"] = data_url
-            return rows
-        except Exception as exc:
-            last_error = exc
-            logger.warning(
-                "Fetch attempt %s/%s failed for %s: %s",
-                attempt,
-                MAX_RETRIES,
-                api_code,
-                exc,
-            )
-            if attempt < MAX_RETRIES:
-                time.sleep(2 * attempt)
+            break
 
-    assert last_error is not None
-    raise last_error
+        meta = payload[0] if isinstance(payload[0], dict) else {}
+        pages = int(meta.get("pages") or 1)
+        rows = payload[1]
+        for row in rows:
+            row["_data_url"] = data_url
+        all_rows.extend(rows)
+        page += 1
+        if page <= pages:
+            time.sleep(0.2)
+
+    return all_rows
 
 
 def ingest(only_codes: Optional[set[str]] = None) -> None:
