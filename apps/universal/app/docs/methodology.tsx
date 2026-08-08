@@ -95,30 +95,43 @@ export default function MethodologyScreen() {
               <Text style={styles.dimLabel}>{dim.label}</Text>
               <Text style={styles.dimDesc}>{dim.description}</Text>
 
-              <Text style={styles.dimSubhead}>Indicators</Text>
-              {dim.indicators.map((ind) => (
-                <View key={ind.code} style={styles.indicatorRow}>
-                  <Text style={styles.indicatorName}>
-                    {ind.name}
-                    {ind.isProxy ? ' (proxy)' : ''}
+              {dim.isComposite ? (
+                <>
+                  <Text style={styles.dimSubhead}>Composite</Text>
+                  <Text style={styles.indicatorNotes}>
+                    Derived from trend momentum across the other six dimensions —
+                    not from a single raw indicator series. See Trajectory Dimension
+                    below.
                   </Text>
-                  <Text style={styles.indicatorMeta}>
-                    {sourceDisplayName(ind.source)} · weight {ind.weight} ·{' '}
-                    {formatNormalization(ind.normalization)} ·{' '}
-                    {formatDirection(ind.direction)}
-                  </Text>
-                  {ind.notes ? (
-                    <Text style={styles.indicatorNotes}>{ind.notes}</Text>
-                  ) : null}
-                </View>
-              ))}
+                </>
+              ) : (
+                <>
+                  <Text style={styles.dimSubhead}>Indicators</Text>
+                  {dim.indicators.map((ind) => (
+                    <View key={ind.code} style={styles.indicatorRow}>
+                      <Text style={styles.indicatorName}>
+                        {ind.name}
+                        {ind.isProxy ? ' (proxy)' : ''}
+                      </Text>
+                      <Text style={styles.indicatorMeta}>
+                        {sourceDisplayName(ind.source)} · weight {ind.weight} ·{' '}
+                        {formatNormalization(ind.normalization)} ·{' '}
+                        {formatDirection(ind.direction)}
+                      </Text>
+                      {ind.notes ? (
+                        <Text style={styles.indicatorNotes}>{ind.notes}</Text>
+                      ) : null}
+                    </View>
+                  ))}
 
-              <Text style={styles.dimSubhead}>Data sources</Text>
-              <View style={styles.pillRow}>
-                {uniqueSources.map((src) => (
-                  <SourcePill key={`${dim.key}-${src}`} sourceKey={src} />
-                ))}
-              </View>
+                  <Text style={styles.dimSubhead}>Data sources</Text>
+                  <View style={styles.pillRow}>
+                    {uniqueSources.map((src) => (
+                      <SourcePill key={`${dim.key}-${src}`} sourceKey={src} />
+                    ))}
+                  </View>
+                </>
+              )}
             </View>
           );
         })}
@@ -143,8 +156,8 @@ export default function MethodologyScreen() {
 
         <Text style={styles.subHeading}>Overall MVI</Text>
         <Bullet>
-          Default vertical (“All Industries”) weights the six dimensions equally
-          (~1/6 each).
+          Default vertical (“All Industries”) weights the seven dimensions equally
+          (~1/7 each), including Trajectory.
         </Bullet>
         <Bullet>
           Keep only dimensions with a real score, redistribute weights, then take a
@@ -161,7 +174,72 @@ export default function MethodologyScreen() {
           and others) reweight dimensions at query time. Dimension scores are stored
           once under equal-weight; the overall MVI is recomputed on the fly for the
           selected vertical — same underlying dimensions, different emphasis.
+          Some verticals emphasize Trajectory (e.g. tech) or de-emphasize it
+          (e.g. manufacturing).
         </Body>
+      </Section>
+
+      <Section title="Trajectory Dimension">
+        <Body>
+          Trajectory is the seventh MVI dimension. It is a composite score derived
+          from the trend momentum of the other six base dimensions — not from a
+          separate raw indicator feed.
+        </Body>
+        <Bullet>
+          A country where multiple dimensions are improving scores high on
+          Trajectory.
+        </Bullet>
+        <Bullet>
+          A country where dimensions are declining or stagnant scores low.
+        </Bullet>
+        <Bullet>
+          By default Trajectory is weighted equally with the other dimensions;
+          industry verticals may raise or lower that weight.
+        </Bullet>
+        <Bullet>
+          Trajectory quantifies observed momentum. It is not a prediction of future
+          outcomes.
+        </Bullet>
+      </Section>
+
+      <Section title="Trend Projections">
+        <Body>
+          Historical indicator time series drive dimension-level trend estimates and
+          forward projections shown in the explorer.
+        </Body>
+        <Bullet>
+          Linear regression on normalized dimension-level time series estimates
+          annualized rate and direction (improving / stable / declining).
+        </Bullet>
+        <Bullet>
+          Domain-aware adjustments apply where needed (e.g. log-scale treatment for
+          GDP-like series) and projected scores are clamped to the 0–100 scale.
+        </Bullet>
+        <Bullet>
+          Projection horizons are 2 years and 5 years from the latest observation.
+        </Bullet>
+        <Bullet>
+          Confidence intervals widen with horizon length — longer horizons are more
+          uncertain.
+        </Bullet>
+        <Bullet>
+          Trend confidence levels: High (8+ data points), Medium (5–7), Low (3–4).
+          Fewer than three points yields insufficient data.
+        </Bullet>
+        <Bullet>
+          The explorer time-horizon toggle can display projected overall scores on
+          the choropleth (current / 2yr / 5yr).
+        </Bullet>
+        <Body>
+          Transparency: projections are mechanical extrapolations of observed trends,
+          not forecasts that incorporate external analysis, expert judgment, or
+          scenario planning.
+        </Body>
+        <Text style={styles.subHeading}>What projections do not account for</Text>
+        <Bullet>Policy changes and regulatory shifts</Bullet>
+        <Bullet>Economic shocks and recessions</Bullet>
+        <Bullet>Geopolitical events and conflict</Bullet>
+        <Bullet>One-off structural breaks not yet visible in the series</Bullet>
       </Section>
 
       <Section title="Confidence Levels">
@@ -171,7 +249,8 @@ export default function MethodologyScreen() {
         <View style={styles.confCard}>
           <Text style={styles.confLevel}>High</Text>
           <Text style={styles.confRule}>
-            5–6 dimensions scored and ≥60% of configured indicators present.
+            5–6 base dimensions scored and ≥60% of configured indicators present
+            (Trajectory is composite and does not replace coverage rules).
           </Text>
         </View>
         <View style={styles.confCard}>
@@ -226,6 +305,9 @@ export default function MethodologyScreen() {
         <Bullet>
           Confidence levels communicate uncertainty honestly — nulls and gaps beat
           false precision.
+        </Bullet>
+        <Bullet>
+          Trend projections are not forecasts of policy, shocks, or geopolitics.
         </Bullet>
       </Section>
     </MarketingShell>
