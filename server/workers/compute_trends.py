@@ -20,6 +20,8 @@ from typing import Any
 import numpy as np
 from scipy import stats
 
+from psycopg2.extras import Json
+
 from config import LOGS_DIR
 from db import get_cursor
 from scoring_config import BASE_DIMENSION_KEYS, DIMENSIONS
@@ -241,6 +243,9 @@ def fit_trend(
             "data_points": n,
             "year_range_start": earliest_year,
             "year_range_end": latest_year,
+            "historical_scores": [
+                {"year": int(y), "score": round(float(s), 4)} for y, s in series
+            ],
         }
 
     # Rate / direction / acceleration always on the 0–100 score scale
@@ -291,6 +296,9 @@ def fit_trend(
         "data_points": n,
         "year_range_start": earliest_year,
         "year_range_end": latest_year,
+        "historical_scores": [
+            {"year": int(y), "score": round(float(s), 4)} for y, s in series
+        ],
     }
 
 
@@ -397,6 +405,7 @@ def upsert_trend(cursor, geography_id: str, dimension: str, row: dict[str, Any])
             data_points,
             year_range_start,
             year_range_end,
+            historical_scores,
             computed_at
         )
         VALUES (
@@ -416,6 +425,7 @@ def upsert_trend(cursor, geography_id: str, dimension: str, row: dict[str, Any])
             %(data_points)s,
             %(year_range_start)s,
             %(year_range_end)s,
+            %(historical_scores)s,
             NOW()
         )
         ON CONFLICT (geography_id, dimension)
@@ -434,6 +444,7 @@ def upsert_trend(cursor, geography_id: str, dimension: str, row: dict[str, Any])
             data_points = EXCLUDED.data_points,
             year_range_start = EXCLUDED.year_range_start,
             year_range_end = EXCLUDED.year_range_end,
+            historical_scores = EXCLUDED.historical_scores,
             computed_at = NOW()
         """,
         {
@@ -453,6 +464,7 @@ def upsert_trend(cursor, geography_id: str, dimension: str, row: dict[str, Any])
             "data_points": int(row["data_points"]),
             "year_range_start": row["year_range_start"],
             "year_range_end": row["year_range_end"],
+            "historical_scores": Json(row.get("historical_scores") or []),
         },
     )
 

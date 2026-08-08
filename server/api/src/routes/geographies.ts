@@ -844,6 +844,7 @@ router.get('/:id/trends', async (req: Request, res: Response) => {
       data_points: number;
       year_range_start: number | null;
       year_range_end: number | null;
+      historical_scores: Array<{ year: number; score: number }> | null;
     }>(
       `
       SELECT
@@ -861,7 +862,8 @@ router.get('/:id/trends', async (req: Request, res: Response) => {
         trend_confidence,
         data_points,
         year_range_start,
-        year_range_end
+        year_range_end,
+        historical_scores
       FROM trend_scores
       WHERE geography_id = $1
       `,
@@ -878,6 +880,12 @@ router.get('/:id/trends', async (req: Request, res: Response) => {
       }
       const start = row.year_range_start;
       const end = row.year_range_end;
+      const historical = Array.isArray(row.historical_scores)
+        ? row.historical_scores.map((p) => ({
+            year: Number(p.year),
+            score: Number(p.score),
+          }))
+        : [];
       trends[key] = {
         direction: row.direction,
         annualizedRate: numOrNull(row.annualized_rate),
@@ -895,6 +903,7 @@ router.get('/:id/trends', async (req: Request, res: Response) => {
         dataPoints: row.data_points,
         yearRange:
           start != null && end != null ? ([start, end] as [number, number]) : null,
+        historicalScores: historical,
       };
     }
 

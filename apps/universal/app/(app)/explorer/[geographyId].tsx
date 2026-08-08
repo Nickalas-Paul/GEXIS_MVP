@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import TrendAnalysisSection from '@/components/explorer/TrendAnalysisSection';
 import { mviScoreColor } from '@/lib/mviColors';
 import {
   COMPARE_MAX,
@@ -27,6 +28,7 @@ import {
   type GeographyDetail,
   type MviSourceRef,
   type QuickFacts,
+  type TrendData,
 } from '@/services/geographies';
 
 function confidenceColor(c: string | null | undefined): string {
@@ -277,6 +279,8 @@ export default function GeographyDetailScreen() {
   } = useCompareSelection();
 
   const [data, setData] = useState<GeographyDetail | null>(null);
+  const [trendData, setTrendData] = useState<TrendData | null>(null);
+  const [trendsLoading, setTrendsLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -288,6 +292,7 @@ export default function GeographyDetailScreen() {
     }
     let cancelled = false;
     setLoading(true);
+    setTrendsLoading(true);
     setError(null);
     void getGeographyDetail(geographyId, vertical)
       .then((geo) => {
@@ -302,12 +307,16 @@ export default function GeographyDetailScreen() {
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
-    // Temporary Step 8A verify — replaced by Trend Analysis UI in 8B
-    void getGeographyTrends(geographyId).then((trends) => {
-      if (cancelled || !trends) return;
-      const keys = Object.keys(trends.trends).filter((k) => trends.trends[k] != null);
-      console.log('[trends]', geographyId, 'dims=', keys.length, keys);
-    });
+    void getGeographyTrends(geographyId)
+      .then((trends) => {
+        if (!cancelled) setTrendData(trends);
+      })
+      .catch(() => {
+        if (!cancelled) setTrendData(null);
+      })
+      .finally(() => {
+        if (!cancelled) setTrendsLoading(false);
+      });
     return () => {
       cancelled = true;
     };
@@ -433,6 +442,12 @@ export default function GeographyDetailScreen() {
                   );
                 })}
               </View>
+
+              <TrendAnalysisSection
+                trendData={trendData}
+                trajectoryScore={data.mvi?.dimensions?.trajectory ?? null}
+                loading={trendsLoading}
+              />
 
               <View style={styles.actionsRow}>
                 {(() => {
