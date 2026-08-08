@@ -24,6 +24,7 @@ import {
   COMPARE_MAX,
   useCompareSelection,
 } from '@/hooks/useCompareSelection';
+import { useTierAccess } from '@/hooks/useTierAccess';
 import { getApiUrl } from '@/services/api';
 import {
   getGeographyDetail,
@@ -308,6 +309,9 @@ export default function GeographyDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const [exportUpgradePrompt, setExportUpgradePrompt] = useState(false);
+  const { canExport } = useTierAccess();
+  const exportsAllowed = canExport();
 
   useEffect(() => {
     if (!geographyId) {
@@ -525,34 +529,62 @@ export default function GeographyDetailScreen() {
                 <View style={styles.exportWrap}>
                   <Pressable
                     style={[styles.actionBtn, styles.actionBtnGhost]}
-                    onPress={() => setExportMenuOpen((o) => !o)}
+                    onPress={() => {
+                      setExportMenuOpen((o) => !o);
+                      setExportUpgradePrompt(false);
+                    }}
                   >
                     <Text style={styles.actionTextGhost}>
-                      Export{exportMenuOpen ? ' ▴' : ' ▾'}
+                      {exportsAllowed
+                        ? `Export${exportMenuOpen ? ' ▴' : ' ▾'}`
+                        : `Export 🔒${exportMenuOpen ? ' ▴' : ' ▾'}`}
                     </Text>
                   </Pressable>
                   {exportMenuOpen ? (
                     <View style={styles.exportMenu}>
                       <Pressable
-                        style={styles.exportMenuItem}
+                        style={[
+                          styles.exportMenuItem,
+                          !exportsAllowed && styles.exportMenuItemLocked,
+                        ]}
                         onPress={() => {
+                          if (!exportsAllowed) {
+                            setExportUpgradePrompt(true);
+                            return;
+                          }
                           const id = data.isoCode ?? data.id;
                           openExportUrl(geographyExportUrl(id, 'pdf', vertical));
                           setExportMenuOpen(false);
                         }}
                       >
-                        <Text style={styles.exportMenuText}>Download PDF</Text>
+                        <Text style={styles.exportMenuText}>
+                          {exportsAllowed ? 'Download PDF' : '🔒 Download PDF'}
+                        </Text>
                       </Pressable>
                       <Pressable
-                        style={styles.exportMenuItem}
+                        style={[
+                          styles.exportMenuItem,
+                          !exportsAllowed && styles.exportMenuItemLocked,
+                        ]}
                         onPress={() => {
+                          if (!exportsAllowed) {
+                            setExportUpgradePrompt(true);
+                            return;
+                          }
                           const id = data.isoCode ?? data.id;
                           openExportUrl(geographyExportUrl(id, 'csv', vertical));
                           setExportMenuOpen(false);
                         }}
                       >
-                        <Text style={styles.exportMenuText}>Download CSV</Text>
+                        <Text style={styles.exportMenuText}>
+                          {exportsAllowed ? 'Download CSV' : '🔒 Download CSV'}
+                        </Text>
                       </Pressable>
+                      {exportUpgradePrompt ? (
+                        <Text style={styles.exportUpgradePrompt}>
+                          Upgrade to Pro to export
+                        </Text>
+                      ) : null}
                     </View>
                   ) : null}
                 </View>
@@ -939,6 +971,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     borderBottomWidth: 1,
     borderBottomColor: '#1c1c2a',
+  },
+  exportMenuItemLocked: {
+    opacity: 0.45,
+  },
+  exportUpgradePrompt: {
+    color: '#e0a03a',
+    fontSize: 11,
+    fontWeight: '600',
+    paddingHorizontal: 12,
+    paddingBottom: 10,
+    paddingTop: 4,
   },
   exportMenuText: {
     color: 'rgba(255,255,255,0.85)',

@@ -1,4 +1,4 @@
-import { useId, type ReactNode } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import {
   Platform,
   Pressable,
@@ -7,6 +7,7 @@ import {
   View,
 } from 'react-native';
 
+import { useTierAccess } from '@/hooks/useTierAccess';
 import {
   FILTER_LIMITS,
   formatMaxScore,
@@ -16,6 +17,7 @@ import {
   type ExplorerFilterState,
   type TimeHorizon,
 } from '@/lib/explorerFilters';
+import { DEFAULT_INDUSTRY_VERTICAL } from '@/lib/industryVerticals';
 
 import IndustryVerticalSelect from './IndustryVerticalSelect';
 
@@ -32,6 +34,8 @@ const HORIZON_OPTIONS: Array<{ value: TimeHorizon; label: string }> = [
   { value: '5yr', label: '5-Year' },
 ];
 
+const UPGRADE_PROMPT = 'Upgrade to Pro to unlock';
+
 function RangeSlider({
   value,
   min,
@@ -39,6 +43,7 @@ function RangeSlider({
   step,
   onChange,
   accent = '#3d8bfd',
+  disabled = false,
 }: {
   value: number;
   min: number;
@@ -46,13 +51,14 @@ function RangeSlider({
   step: number;
   onChange: (v: number) => void;
   accent?: string;
+  disabled?: boolean;
 }) {
   const id = useId();
   const pct = max === min ? 0 : ((value - min) / (max - min)) * 100;
 
   if (Platform.OS === 'web') {
     return (
-      <View style={styles.sliderTrackWrap}>
+      <View style={styles.sliderTrackWrap} pointerEvents={disabled ? 'none' : 'auto'}>
         <View style={styles.sliderTrackBg}>
           <View
             style={StyleSheet.flatten([
@@ -61,7 +67,6 @@ function RangeSlider({
             ])}
           />
         </View>
-        {/* RN Web: native range for smooth drag */}
         <input
           id={id}
           type="range"
@@ -69,6 +74,7 @@ function RangeSlider({
           max={max}
           step={step}
           value={value}
+          disabled={disabled}
           onChange={(e) => onChange(Number(e.target.value))}
           style={{
             position: 'absolute',
@@ -78,7 +84,7 @@ function RangeSlider({
             margin: 0,
             opacity: 0.01,
             height: 28,
-            cursor: 'pointer',
+            cursor: disabled ? 'not-allowed' : 'pointer',
           }}
         />
       </View>
@@ -86,9 +92,16 @@ function RangeSlider({
   }
 
   return (
-    <View style={styles.nativeSliderFallback}>
-      <Pressable onPress={() => onChange(Math.max(min, value - step))} style={styles.stepBtn}>
-        <Text style={styles.stepBtnText}>−</Text>
+    <View
+      style={styles.nativeSliderFallback}
+      pointerEvents={disabled ? 'none' : 'auto'}
+    >
+      <Pressable
+        disabled={disabled}
+        onPress={() => onChange(Math.max(min, value - step))}
+        style={styles.stepBtn}
+      >
+        <Text style={styles.stepBtnText}>-</Text>
       </Pressable>
       <View style={StyleSheet.flatten([styles.sliderTrackBg, { flex: 1 }])}>
         <View
@@ -98,7 +111,11 @@ function RangeSlider({
           ])}
         />
       </View>
-      <Pressable onPress={() => onChange(Math.min(max, value + step))} style={styles.stepBtn}>
+      <Pressable
+        disabled={disabled}
+        onPress={() => onChange(Math.min(max, value + step))}
+        style={styles.stepBtn}
+      >
         <Text style={styles.stepBtnText}>+</Text>
       </Pressable>
     </View>
@@ -108,16 +125,20 @@ function RangeSlider({
 function FilterRow({
   label,
   valueLabel,
+  locked,
   children,
 }: {
   label: string;
   valueLabel: string;
+  locked?: boolean;
   children: ReactNode;
 }) {
   return (
     <View style={styles.row}>
       <View style={styles.rowHeader}>
-        <Text style={styles.rowLabel}>{label}</Text>
+        <Text style={styles.rowLabel}>
+          {locked ? `${label} 🔒` : label}
+        </Text>
         <Text style={styles.rowValue}>{valueLabel}</Text>
       </View>
       {children}
@@ -126,6 +147,21 @@ function FilterRow({
 }
 
 export default function FilterSidebar({ filters, onChange, onReset, style }: Props) {
+  const {
+    canUseFilter,
+    canUseHorizon,
+    canUseIndustryVertical,
+  } = useTierAccess();
+  const [promptKey, setPromptKey] = useState<string | null>(null);
+
+  const talentLocked = !canUseFilter('talentDensity');
+  const competitorLocked = !canUseFilter('competitorSaturation');
+  const industryLocked = !canUseIndustryVertical();
+
+  const showPrompt = (key: string) => {
+    setPromptKey(key);
+  };
+
   return (
     <View style={StyleSheet.flatten([styles.sidebar, style])}>
       <View style={styles.header}>
@@ -136,11 +172,29 @@ export default function FilterSidebar({ filters, onChange, onReset, style }: Pro
       </View>
 
       <View style={StyleSheet.flatten([styles.row, styles.verticalRow])}>
-        <Text style={styles.rowLabel}>Industry Vertical</Text>
-        <IndustryVerticalSelect
-          value={filters.industryVertical}
-          onChange={(industryVertical) => onChange({ industryVertical })}
-        />
+        <Text style={styles.rowLabel}>
+          {industryLocked ? 'Industry Vertical 🔒' : 'Industry Vertical'}
+        </Text>
+        {industryLocked ? (
+          <Pressable
+            style={styles.lockedBlock}
+            onPress={() => showPrompt('industry')}
+          >
+            <IndustryVerticalSelect
+              value={DEFAULT_INDUSTRY_VERTICAL}
+              onChange={() => undefined}
+              locked
+            />
+            {promptKey === 'industry' ? (
+              <Text style={styles.upgradePrompt}>{UPGRADE_PROMPT}</Text>
+            ) : null}
+          </Pressable>
+        ) : (
+          <IndustryVerticalSelect
+            value={filters.industryVertical}
+            onChange={(industryVertical) => onChange({ industryVertical })}
+          />
+        )}
       </View>
 
       <View style={styles.row}>
@@ -148,21 +202,39 @@ export default function FilterSidebar({ filters, onChange, onReset, style }: Pro
         <View style={styles.segmentRow}>
           {HORIZON_OPTIONS.map((opt) => {
             const active = filters.horizon === opt.value;
+            const locked = !canUseHorizon(opt.value);
             return (
               <Pressable
                 key={opt.value}
-                onPress={() => onChange({ horizon: opt.value })}
-                style={[styles.segmentBtn, active && styles.segmentBtnActive]}
+                onPress={() => {
+                  if (locked) {
+                    showPrompt(`horizon-${opt.value}`);
+                    return;
+                  }
+                  onChange({ horizon: opt.value });
+                }}
+                style={[
+                  styles.segmentBtn,
+                  active && !locked && styles.segmentBtnActive,
+                  locked && styles.segmentBtnLocked,
+                ]}
               >
                 <Text
-                  style={[styles.segmentText, active && styles.segmentTextActive]}
+                  style={[
+                    styles.segmentText,
+                    active && !locked && styles.segmentTextActive,
+                    locked && styles.segmentTextLocked,
+                  ]}
                 >
-                  {opt.label}
+                  {locked ? `${opt.label} 🔒` : opt.label}
                 </Text>
               </Pressable>
             );
           })}
         </View>
+        {promptKey?.startsWith('horizon-') ? (
+          <Text style={styles.upgradePrompt}>{UPGRADE_PROMPT}</Text>
+        ) : null}
       </View>
 
       <FilterRow
@@ -193,33 +265,87 @@ export default function FilterSidebar({ filters, onChange, onReset, style }: Pro
         />
       </FilterRow>
 
-      <FilterRow
-        label="Talent Density Min."
-        valueLabel={formatMinScore(filters.minTalentDensity)}
-      >
-        <RangeSlider
-          value={filters.minTalentDensity}
-          min={FILTER_LIMITS.minTalentDensity.min}
-          max={FILTER_LIMITS.minTalentDensity.max}
-          step={FILTER_LIMITS.minTalentDensity.step}
-          accent="#3ecf8e"
-          onChange={(minTalentDensity) => onChange({ minTalentDensity })}
-        />
-      </FilterRow>
+      {talentLocked ? (
+        <Pressable
+          onPress={() => showPrompt('talent')}
+          style={styles.lockedBlock}
+        >
+          <FilterRow
+            label="Talent Density Min."
+            valueLabel={formatMinScore(filters.minTalentDensity)}
+            locked
+          >
+            <RangeSlider
+              value={filters.minTalentDensity}
+              min={FILTER_LIMITS.minTalentDensity.min}
+              max={FILTER_LIMITS.minTalentDensity.max}
+              step={FILTER_LIMITS.minTalentDensity.step}
+              accent="#3ecf8e"
+              disabled
+              onChange={() => undefined}
+            />
+          </FilterRow>
+          {promptKey === 'talent' ? (
+            <Text style={styles.upgradePrompt}>{UPGRADE_PROMPT}</Text>
+          ) : null}
+        </Pressable>
+      ) : (
+        <FilterRow
+          label="Talent Density Min."
+          valueLabel={formatMinScore(filters.minTalentDensity)}
+        >
+          <RangeSlider
+            value={filters.minTalentDensity}
+            min={FILTER_LIMITS.minTalentDensity.min}
+            max={FILTER_LIMITS.minTalentDensity.max}
+            step={FILTER_LIMITS.minTalentDensity.step}
+            accent="#3ecf8e"
+            onChange={(minTalentDensity) => onChange({ minTalentDensity })}
+          />
+        </FilterRow>
+      )}
 
-      <FilterRow
-        label="Competitor Saturation"
-        valueLabel={formatMaxScore(filters.maxCompetitorSaturation)}
-      >
-        <RangeSlider
-          value={filters.maxCompetitorSaturation}
-          min={FILTER_LIMITS.maxCompetitorSaturation.min}
-          max={FILTER_LIMITS.maxCompetitorSaturation.max}
-          step={FILTER_LIMITS.maxCompetitorSaturation.step}
-          accent="#d96b6b"
-          onChange={(maxCompetitorSaturation) => onChange({ maxCompetitorSaturation })}
-        />
-      </FilterRow>
+      {competitorLocked ? (
+        <Pressable
+          onPress={() => showPrompt('competitor')}
+          style={styles.lockedBlock}
+        >
+          <FilterRow
+            label="Competitor Saturation"
+            valueLabel={formatMaxScore(filters.maxCompetitorSaturation)}
+            locked
+          >
+            <RangeSlider
+              value={filters.maxCompetitorSaturation}
+              min={FILTER_LIMITS.maxCompetitorSaturation.min}
+              max={FILTER_LIMITS.maxCompetitorSaturation.max}
+              step={FILTER_LIMITS.maxCompetitorSaturation.step}
+              accent="#d96b6b"
+              disabled
+              onChange={() => undefined}
+            />
+          </FilterRow>
+          {promptKey === 'competitor' ? (
+            <Text style={styles.upgradePrompt}>{UPGRADE_PROMPT}</Text>
+          ) : null}
+        </Pressable>
+      ) : (
+        <FilterRow
+          label="Competitor Saturation"
+          valueLabel={formatMaxScore(filters.maxCompetitorSaturation)}
+        >
+          <RangeSlider
+            value={filters.maxCompetitorSaturation}
+            min={FILTER_LIMITS.maxCompetitorSaturation.min}
+            max={FILTER_LIMITS.maxCompetitorSaturation.max}
+            step={FILTER_LIMITS.maxCompetitorSaturation.step}
+            accent="#d96b6b"
+            onChange={(maxCompetitorSaturation) =>
+              onChange({ maxCompetitorSaturation })
+            }
+          />
+        </FilterRow>
+      )}
 
       <FilterRow
         label="Regulatory Ease Floor"
@@ -341,6 +467,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#1e2a44',
     borderColor: '#3d8bfd',
   },
+  segmentBtnLocked: {
+    opacity: 0.4,
+  },
   segmentText: {
     color: 'rgba(255,255,255,0.55)',
     fontSize: 11,
@@ -348,5 +477,18 @@ const styles = StyleSheet.create({
   },
   segmentTextActive: {
     color: '#fff',
+  },
+  segmentTextLocked: {
+    color: 'rgba(255,255,255,0.55)',
+  },
+  lockedBlock: {
+    opacity: 0.4,
+    gap: 6,
+  },
+  upgradePrompt: {
+    color: '#e0a03a',
+    fontSize: 11,
+    fontWeight: '600',
+    marginTop: 4,
   },
 });

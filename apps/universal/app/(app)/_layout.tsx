@@ -11,6 +11,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CompareProvider } from '@/hooks/useCompareSelection';
+import { useTierAccess } from '@/hooks/useTierAccess';
 import { useAuth } from '@/services/auth';
 
 const APP_LINKS = [
@@ -19,13 +20,50 @@ const APP_LINKS = [
   { href: '/settings' as const, label: 'Settings' },
 ];
 
+function TierBadge() {
+  const { gatingEnabled, currentTier } = useTierAccess();
+
+  if (!gatingEnabled) {
+    return (
+      <View style={[styles.badge, styles.badgeBeta]}>
+        <Text style={styles.badgeText}>BETA</Text>
+      </View>
+    );
+  }
+
+  if (currentTier === 'pro') {
+    return (
+      <View style={[styles.badge, styles.badgePro]}>
+        <Text style={[styles.badgeText, styles.badgeTextOnColor]}>PRO</Text>
+      </View>
+    );
+  }
+
+  if (currentTier === 'marketplace') {
+    return (
+      <View style={[styles.badge, styles.badgeMarketplace]}>
+        <Text style={[styles.badgeText, styles.badgeTextOnColor]}>MARKETPLACE</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={[styles.badge, styles.badgeFree]}>
+      <Text style={styles.badgeText}>FREE</Text>
+    </View>
+  );
+}
+
 function WebSidebarShell() {
   const { user, logout } = useAuth();
 
   return (
     <View style={styles.shell}>
       <View style={styles.sidebar}>
-        <Text style={styles.brand}>GEXIS</Text>
+        <View style={styles.brandRow}>
+          <Text style={styles.brand}>GEXIS</Text>
+          <TierBadge />
+        </View>
         <Text style={styles.shellLabel}>App shell (sidebar)</Text>
         {user ? <Text style={styles.userEmail}>{user.email}</Text> : null}
         {APP_LINKS.map((item) => (
@@ -62,6 +100,20 @@ function NativeTabsShell() {
 
   return (
     <View style={styles.nativeWrap}>
+      <View
+        style={[
+          styles.nativeBadgeBar,
+          { paddingTop: Math.max(insets.top, 8) },
+        ]}
+      >
+        <View style={styles.nativeBrandRow}>
+          <Text style={styles.nativeBrand}>GEXIS</Text>
+          <TierBadge />
+        </View>
+        <Pressable onPress={() => void logout()} hitSlop={8}>
+          <Text style={styles.navTextMuted}>Log out</Text>
+        </Pressable>
+      </View>
       <Tabs
         screenOptions={{
           headerShown: false,
@@ -83,9 +135,6 @@ function NativeTabsShell() {
         <Tabs.Screen name="marketplace" options={{ title: 'Marketplace' }} />
         <Tabs.Screen name="settings" options={{ title: 'Settings' }} />
       </Tabs>
-      <Pressable style={styles.nativeLogout} onPress={() => void logout()}>
-        <Text style={styles.navTextMuted}>Log out</Text>
-      </Pressable>
     </View>
   );
 }
@@ -99,7 +148,7 @@ export default function AppShellLayout() {
     return (
       <View style={styles.loading}>
         <ActivityIndicator size="large" color="#1a1a1a" />
-        <Text style={styles.loadingText}>Checking session…</Text>
+        <Text style={styles.loadingText}>Checking session...</Text>
       </View>
     );
   }
@@ -127,10 +176,41 @@ const styles = StyleSheet.create({
     borderRightColor: '#e2e2de',
     backgroundColor: '#ffffff',
   },
+  brandRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
+  },
   brand: {
     fontSize: 18,
     fontWeight: '700',
-    marginBottom: 4,
+  },
+  badge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 999,
+  },
+  badgeBeta: {
+    backgroundColor: '#e8eef8',
+  },
+  badgeFree: {
+    backgroundColor: '#e5e5e5',
+  },
+  badgePro: {
+    backgroundColor: '#3b82f6',
+  },
+  badgeMarketplace: {
+    backgroundColor: '#10b981',
+  },
+  badgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.6,
+    color: '#1a1a1a',
+  },
+  badgeTextOnColor: {
+    color: '#ffffff',
   },
   shellLabel: {
     fontSize: 12,
@@ -172,10 +252,23 @@ const styles = StyleSheet.create({
   nativeWrap: {
     flex: 1,
   },
-  nativeLogout: {
-    position: 'absolute',
-    top: 12,
-    right: 16,
-    padding: 8,
+  nativeBadgeBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+    backgroundColor: '#ffffff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e2de',
+  },
+  nativeBrandRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  nativeBrand: {
+    fontSize: 16,
+    fontWeight: '700',
   },
 });

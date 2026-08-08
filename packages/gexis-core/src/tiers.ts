@@ -100,7 +100,10 @@ export function isGatingEnabled(): boolean {
   if (typeof process === 'undefined' || process.env == null) {
     return false;
   }
-  const raw = process.env.GEXIS_GATING_ENABLED;
+  // Server uses GEXIS_GATING_ENABLED; Expo client only inlines EXPO_PUBLIC_*.
+  const raw =
+    process.env.GEXIS_GATING_ENABLED ??
+    process.env.EXPO_PUBLIC_GEXIS_GATING_ENABLED;
   return raw === 'true' || raw === '1';
 }
 

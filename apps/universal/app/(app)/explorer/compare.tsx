@@ -18,6 +18,7 @@ import {
   COMPARE_MAX,
   useCompareSelection,
 } from '@/hooks/useCompareSelection';
+import { useTierAccess } from '@/hooks/useTierAccess';
 import { mviScoreColor } from '@/lib/mviColors';
 import { getApiUrl } from '@/services/api';
 import {
@@ -130,6 +131,9 @@ export default function CompareMarketsScreen() {
   const { width } = useWindowDimensions();
   const params = useLocalSearchParams<{ compare?: string | string[] }>();
   const { clearCompare } = useCompareSelection();
+  const { canExport } = useTierAccess();
+  const exportsAllowed = canExport();
+  const [exportUpgradePrompt, setExportUpgradePrompt] = useState(false);
   const isWide = width >= 768;
 
   const isos = useMemo(() => parseCompareParam(params.compare), [params.compare]);
@@ -449,19 +453,32 @@ export default function CompareMarketsScreen() {
 
         {isos.length > 0 ? (
           <View style={styles.actions}>
-            <Pressable
-              style={styles.ghostBtn}
-              onPress={() => {
-                if (isos.length === 0) return;
-                const base = getApiUrl().replace(/\/$/, '');
-                const url = `${base}/api/exports/compare/csv?compare=${encodeURIComponent(
-                  isos.join(',')
-                )}`;
-                openExportUrl(url);
-              }}
-            >
-              <Text style={styles.ghostBtnText}>Export CSV</Text>
-            </Pressable>
+            <View style={styles.exportGateWrap}>
+              <Pressable
+                style={[styles.ghostBtn, !exportsAllowed && styles.ghostBtnLocked]}
+                onPress={() => {
+                  if (isos.length === 0) return;
+                  if (!exportsAllowed) {
+                    setExportUpgradePrompt(true);
+                    return;
+                  }
+                  const base = getApiUrl().replace(/\/$/, '');
+                  const url = `${base}/api/exports/compare/csv?compare=${encodeURIComponent(
+                    isos.join(',')
+                  )}`;
+                  openExportUrl(url);
+                }}
+              >
+                <Text style={styles.ghostBtnText}>
+                  {exportsAllowed ? 'Export CSV' : 'Export CSV 🔒'}
+                </Text>
+              </Pressable>
+              {exportUpgradePrompt ? (
+                <Text style={styles.exportUpgradePrompt}>
+                  Upgrade to Pro to export
+                </Text>
+              ) : null}
+            </View>
             <Pressable
               style={styles.dangerBtn}
               onPress={() => {
@@ -704,12 +721,23 @@ const styles = StyleSheet.create({
     color: '#c8dcff',
     fontWeight: '600',
   },
+  exportGateWrap: {
+    gap: 6,
+  },
   ghostBtn: {
     borderWidth: 1,
     borderColor: '#2a2a3e',
     borderRadius: 8,
     paddingVertical: 12,
     paddingHorizontal: 16,
+  },
+  ghostBtnLocked: {
+    opacity: 0.45,
+  },
+  exportUpgradePrompt: {
+    color: '#e0a03a',
+    fontSize: 11,
+    fontWeight: '600',
   },
   ghostBtnText: {
     color: 'rgba(255,255,255,0.7)',

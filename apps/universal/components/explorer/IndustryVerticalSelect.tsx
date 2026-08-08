@@ -17,6 +17,8 @@ import {
 type Props = {
   value: string;
   onChange: (key: string) => void;
+  /** When true, dropdown cannot open (Pro gate). */
+  locked?: boolean;
 };
 
 const webScrollStyle =
@@ -28,7 +30,7 @@ const webScrollStyle =
       } as object)
     : null;
 
-export default function IndustryVerticalSelect({ value, onChange }: Props) {
+export default function IndustryVerticalSelect({ value, onChange, locked = false }: Props) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const wrapRef = useRef<View>(null);
@@ -91,15 +93,19 @@ export default function IndustryVerticalSelect({ value, onChange }: Props) {
       <Pressable
         style={styles.trigger}
         hitSlop={8}
-        onPress={() => setOpen((v) => !v)}
+        disabled={locked}
+        onPress={() => {
+          if (locked) return;
+          setOpen((v) => !v);
+        }}
       >
         <Text style={styles.triggerText} numberOfLines={1}>
           {verticalLabel(value)}
         </Text>
-        <Text style={styles.chevron}>{open ? '▴' : '▾'}</Text>
+        <Text style={styles.chevron}>{locked ? '🔒' : open ? '▴' : '▾'}</Text>
       </Pressable>
 
-      {open ? (
+      {!locked && open ? (
         <View style={styles.dropdown} collapsable={false}>
           <TextInput
             value={query}
