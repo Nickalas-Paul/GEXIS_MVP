@@ -171,7 +171,14 @@ export default function GeographyDrillDown({
             {/* router.push avoids Link asChild → Slot style-array crash on native */}
             <Pressable
               style={styles.actionBtn}
-              onPress={() => router.push(`/explorer/${geoKey}`)}
+              onPress={() => {
+                const base = `/explorer/${encodeURIComponent(geoKey)}`;
+                const href =
+                  vertical && vertical !== 'all'
+                    ? `${base}?vertical=${encodeURIComponent(vertical)}`
+                    : base;
+                router.push(href as `/explorer/${string}`);
+              }}
             >
               <Text style={styles.actionText}>Full breakdown →</Text>
             </Pressable>
@@ -180,7 +187,11 @@ export default function GeographyDrillDown({
                 styles.actionBtn,
                 styles.actionBtnSecondary,
               ])}
-              onPress={() => router.push(`/explorer/${geoKey}/agents`)}
+              onPress={() =>
+                router.push(
+                  `/explorer/${encodeURIComponent(geoKey)}/agents` as `/explorer/${string}/agents`
+                )
+              }
             >
               <Text style={styles.actionTextSecondary}>View agents →</Text>
             </Pressable>

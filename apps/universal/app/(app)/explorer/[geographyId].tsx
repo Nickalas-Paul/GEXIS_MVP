@@ -301,7 +301,13 @@ export default function GeographyDetailScreen() {
         ]}
       >
         <Pressable
-          onPress={() => router.push('/explorer')}
+          onPress={() => {
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.push('/explorer');
+            }
+          }}
           style={styles.backBtn}
           hitSlop={8}
         >
@@ -319,7 +325,10 @@ export default function GeographyDetailScreen() {
           <View style={styles.center}>
             <Text style={styles.errorTitle}>Geography not found</Text>
             <Text style={styles.errorBody}>{error}</Text>
-            <Pressable style={styles.errorBack} onPress={() => router.push('/explorer')}>
+            <Pressable style={styles.errorBack} onPress={() => {
+              if (router.canGoBack()) router.back();
+              else router.push('/explorer');
+            }}>
               <Text style={styles.backText}>← Back to explorer</Text>
             </Pressable>
           </View>
