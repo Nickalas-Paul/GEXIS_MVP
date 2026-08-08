@@ -8,6 +8,7 @@ import rateLimit from 'express-rate-limit';
 import { databaseReady, verifyDatabaseConnection } from './config/database';
 import { connectRedis, redisReady } from './config/redis';
 import authRoutes from './routes/auth';
+import exportRoutes from './routes/exports';
 import geographyRoutes from './routes/geographies';
 import mviRoutes from './routes/mvi';
 
@@ -44,6 +45,7 @@ app.get('/readyz', (_req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/geographies', geographyRoutes);
 app.use('/api/mvi', mviRoutes);
+app.use('/api/exports', exportRoutes);
 
 async function start(): Promise<void> {
   const dbOk = await verifyDatabaseConnection();

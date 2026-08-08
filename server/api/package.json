@@ -10,10 +10,12 @@
     "test": "echo \"No tests yet\""
   },
   "dependencies": {
+    "@gexis/gexis-core": "^0.1.0",
     "argon2": "^0.45.1",
     "connect-redis": "^10.0.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
+    "csv-stringify": "^6.8.3",
     "dotenv": "^17.4.2",
     "express": "^4.21.0",
     "express-rate-limit": "^7.5.0",
@@ -23,9 +25,9 @@
     "passport": "^0.7.0",
     "passport-google-oauth20": "^2.0.0",
     "passport-local": "^1.0.0",
+    "pdfkit": "^0.19.1",
     "pg": "^8.22.0",
-    "redis": "^6.2.0",
-    "@gexis/gexis-core": "^0.1.0"
+    "redis": "^6.2.0"
   },
   "devDependencies": {
     "@types/connect-redis": "^0.0.23",
@@ -38,6 +40,7 @@
     "@types/passport": "^1.0.17",
     "@types/passport-google-oauth20": "^2.0.17",
     "@types/passport-local": "^1.0.38",
+    "@types/pdfkit": "^0.17.6",
     "@types/pg": "^8.20.4",
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.7.0"
