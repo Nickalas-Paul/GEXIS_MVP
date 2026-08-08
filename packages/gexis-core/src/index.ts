@@ -33,3 +33,12 @@ export {
   getQuickFacts,
   type CountryQuickFacts,
 } from "./quickFacts";
+
+export {
+  MVI_DIMENSION_DISPLAY,
+  SOURCE_DISPLAY_NAMES,
+  getDimensionDisplay,
+  sourceDisplayName,
+  type DimensionKey,
+  type DimensionDisplay,
+} from "./mviDisplay";
