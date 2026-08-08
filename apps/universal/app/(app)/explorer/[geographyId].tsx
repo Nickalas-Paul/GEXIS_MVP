@@ -23,6 +23,7 @@ import {
 } from '@/hooks/useCompareSelection';
 import {
   getGeographyDetail,
+  getGeographyTrends,
   type GeographyDetail,
   type MviSourceRef,
   type QuickFacts,
@@ -301,6 +302,12 @@ export default function GeographyDetailScreen() {
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
+    // Temporary Step 8A verify — replaced by Trend Analysis UI in 8B
+    void getGeographyTrends(geographyId).then((trends) => {
+      if (cancelled || !trends) return;
+      const keys = Object.keys(trends.trends).filter((k) => trends.trends[k] != null);
+      console.log('[trends]', geographyId, 'dims=', keys.length, keys);
+    });
     return () => {
       cancelled = true;
     };

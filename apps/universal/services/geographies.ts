@@ -206,6 +206,44 @@ export async function getGeographyDetail(
   return data;
 }
 
+export type DimensionTrend = {
+  direction: 'improving' | 'declining' | 'stable';
+  annualizedRate: number | null;
+  acceleration: number | null;
+  currentScore: number | null;
+  projected2yr: number | null;
+  projected5yr: number | null;
+  confidence: {
+    lower2yr: number | null;
+    upper2yr: number | null;
+    lower5yr: number | null;
+    upper5yr: number | null;
+  };
+  trendConfidence: 'high' | 'medium' | 'low';
+  dataPoints: number;
+  yearRange: [number, number] | null;
+  /** Year-by-year dimension scores for sparklines (optional until API ships it). */
+  historicalScores?: Array<{ year: number; score: number }>;
+};
+
+export type TrendData = {
+  isoCode: string | null;
+  name: string;
+  trends: Record<string, DimensionTrend | null>;
+};
+
+/** Fetch per-dimension trend vectors (6 base dimensions; Trajectory is composite). */
+export async function getGeographyTrends(
+  id: string
+): Promise<TrendData | null> {
+  const response = await fetch(
+    `${getApiUrl()}/api/geographies/${encodeURIComponent(id)}/trends`
+  );
+  if (response.status === 404) return null;
+  const json = await parseJson<ApiEnvelope<TrendData>>(response);
+  return json.data ?? null;
+}
+
 /** Approximate centroid from a GeoJSON geometry (bbox midpoint). */
 export function geometryCentroid(
   geometry: GeoJSON.Geometry | null | undefined
