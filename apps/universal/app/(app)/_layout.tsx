@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { CompareProvider } from '@/hooks/useCompareSelection';
 import { useAuth } from '@/services/auth';
 
 const APP_LINKS = [
@@ -107,11 +108,9 @@ export default function AppShellLayout() {
     return <Redirect href="/login" />;
   }
 
-  if (useSidebar) {
-    return <WebSidebarShell />;
-  }
+  const shell = useSidebar ? <WebSidebarShell /> : <NativeTabsShell />;
 
-  return <NativeTabsShell />;
+  return <CompareProvider>{shell}</CompareProvider>;
 }
 
 const styles = StyleSheet.create({
