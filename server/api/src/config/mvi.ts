@@ -96,29 +96,52 @@ export const MVI_DIMENSIONS: DimensionMeta[] = [
     label: 'Regulatory Ease',
     description: 'Economic freedom and ease of operating a business',
     indicators: [
+      // WGI (~0.65) — broader country coverage than Heritage
+      {
+        source: 'world_bank',
+        code: 'RQ.PER.RNK',
+        name: 'Regulatory Quality (WGI Percentile)',
+        weight: 0.3,
+        isProxy: false,
+      },
+      {
+        source: 'world_bank',
+        code: 'GE.PER.RNK',
+        name: 'Government Effectiveness (WGI Percentile)',
+        weight: 0.2,
+        isProxy: false,
+      },
+      {
+        source: 'world_bank',
+        code: 'RL.PER.RNK',
+        name: 'Rule of Law (WGI Percentile)',
+        weight: 0.15,
+        isProxy: false,
+      },
+      // Heritage (~0.35) — reduced proportionally to make room for WGI
       {
         source: 'heritage',
         code: 'heritage_overall',
         name: 'Economic Freedom Index (overall)',
-        weight: 0.4,
+        weight: 0.14,
       },
       {
         source: 'heritage',
         code: 'heritage_business_freedom',
         name: 'Business Freedom',
-        weight: 0.3,
+        weight: 0.11,
       },
       {
         source: 'heritage',
         code: 'heritage_trade_freedom',
         name: 'Trade Freedom',
-        weight: 0.15,
+        weight: 0.05,
       },
       {
         source: 'heritage',
         code: 'heritage_investment_freedom',
         name: 'Investment Freedom',
-        weight: 0.15,
+        weight: 0.05,
       },
     ],
   },
