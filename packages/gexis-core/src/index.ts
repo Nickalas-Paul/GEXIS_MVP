@@ -51,3 +51,21 @@ export {
   type IndicatorNormalization,
   type SourceCatalogEntry,
 } from "./mviDisplay";
+
+export {
+  ALL_FILTER_KEYS,
+  ALL_HORIZONS,
+  FREE_FILTER_KEYS,
+  GATING_ENABLED,
+  TIER_FEATURES,
+  canAccessFeature,
+  canUseFilter,
+  canUseHorizon,
+  getAvailableFilters,
+  isGatingEnabled,
+  type FilterKey,
+  type SubscriptionTier,
+  type TierFeature,
+  type TierFeatureMap,
+  type TimeHorizon,
+} from "./tiers";
