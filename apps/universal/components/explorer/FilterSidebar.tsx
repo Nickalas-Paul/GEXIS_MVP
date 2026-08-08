@@ -14,6 +14,7 @@ import {
   formatPercentCap,
   formatPopulation,
   type ExplorerFilterState,
+  type TimeHorizon,
 } from '@/lib/explorerFilters';
 
 import IndustryVerticalSelect from './IndustryVerticalSelect';
@@ -24,6 +25,12 @@ type Props = {
   onReset: () => void;
   style?: object;
 };
+
+const HORIZON_OPTIONS: Array<{ value: TimeHorizon; label: string }> = [
+  { value: 'current', label: 'Current' },
+  { value: '2yr', label: '2-Year' },
+  { value: '5yr', label: '5-Year' },
+];
 
 function RangeSlider({
   value,
@@ -134,6 +141,28 @@ export default function FilterSidebar({ filters, onChange, onReset, style }: Pro
           value={filters.industryVertical}
           onChange={(industryVertical) => onChange({ industryVertical })}
         />
+      </View>
+
+      <View style={styles.row}>
+        <Text style={styles.rowLabel}>Time Horizon</Text>
+        <View style={styles.segmentRow}>
+          {HORIZON_OPTIONS.map((opt) => {
+            const active = filters.horizon === opt.value;
+            return (
+              <Pressable
+                key={opt.value}
+                onPress={() => onChange({ horizon: opt.value })}
+                style={[styles.segmentBtn, active && styles.segmentBtnActive]}
+              >
+                <Text
+                  style={[styles.segmentText, active && styles.segmentTextActive]}
+                >
+                  {opt.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
       </View>
 
       <FilterRow
@@ -293,5 +322,31 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  segmentRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: 4,
+  },
+  segmentBtn: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: '#161622',
+    borderWidth: 1,
+    borderColor: '#2a2a3a',
+    alignItems: 'center',
+  },
+  segmentBtnActive: {
+    backgroundColor: '#1e2a44',
+    borderColor: '#3d8bfd',
+  },
+  segmentText: {
+    color: 'rgba(255,255,255,0.55)',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  segmentTextActive: {
+    color: '#fff',
   },
 });

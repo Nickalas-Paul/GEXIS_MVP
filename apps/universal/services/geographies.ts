@@ -89,27 +89,31 @@ async function parseJson<T>(response: Response): Promise<T> {
 }
 
 export async function fetchGeographiesGeojson(
-  vertical?: string
+  vertical?: string,
+  horizon?: '2yr' | '5yr' | 'current' | null
 ): Promise<GeographyFeatureCollection> {
-  const qs =
-    vertical && vertical !== 'all'
-      ? `?vertical=${encodeURIComponent(vertical)}`
-      : vertical
-        ? `?vertical=${encodeURIComponent(vertical)}`
-        : '';
+  const params = new URLSearchParams();
+  if (vertical) params.set('vertical', vertical);
+  if (horizon === '2yr' || horizon === '5yr') params.set('horizon', horizon);
+  const qs = params.toString() ? `?${params.toString()}` : '';
   const response = await fetch(`${getApiUrl()}/api/geographies/geojson${qs}`);
   return parseJson<GeographyFeatureCollection>(response);
 }
 
 export async function filterGeographies(
   filters: GeographyFilters,
-  options?: { limit?: number; vertical?: string }
+  options?: {
+    limit?: number;
+    vertical?: string;
+    horizon?: '2yr' | '5yr';
+  }
 ): Promise<{ data: GeographyListItem[]; total: number }> {
   const response = await fetch(`${getApiUrl()}/api/geographies/filter`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       vertical: options?.vertical ?? 'all',
+      horizon: options?.horizon,
       filters,
       sort: { field: 'overall', direction: 'desc' },
       limit: options?.limit ?? 200,

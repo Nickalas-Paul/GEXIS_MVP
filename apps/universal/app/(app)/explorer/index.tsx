@@ -61,11 +61,17 @@ export default function ExplorerScreen() {
   const [mobileTab, setMobileTab] = useState<'filters' | 'matches'>('filters');
 
   const dataLabel = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const freshnessLabel =
+    filters.horizon === '2yr'
+      ? { prefix: 'Projected', label: '2-Year' }
+      : filters.horizon === '5yr'
+        ? { prefix: 'Projected', label: '5-Year' }
+        : { prefix: 'Data', label: dataLabel };
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    void fetchGeographiesGeojson(filters.industryVertical)
+    void fetchGeographiesGeojson(filters.industryVertical, filters.horizon)
       .then((fc) => {
         if (!cancelled) {
           setGeojson(fc);
@@ -83,7 +89,7 @@ export default function ExplorerScreen() {
     return () => {
       cancelled = true;
     };
-  }, [filters.industryVertical]);
+  }, [filters.industryVertical, filters.horizon]);
 
   const selectGeography = useCallback(
     (opts: {
@@ -196,7 +202,10 @@ export default function ExplorerScreen() {
             </View>
 
             <View style={styles.topRight} pointerEvents="box-none">
-              <DataFreshnessPill dateLabel={dataLabel} />
+              <DataFreshnessPill
+                labelPrefix={freshnessLabel.prefix}
+                dateLabel={freshnessLabel.label}
+              />
               {filtering ? (
                 <Text style={styles.filteringHint}>Updating filters…</Text>
               ) : null}

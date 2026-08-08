@@ -35,6 +35,7 @@ export function useExplorerFilters() {
       const result = await filterGeographies(apiFilters, {
         limit: 200,
         vertical: next.industryVertical,
+        horizon: next.horizon === 'current' ? undefined : next.horizon,
       });
       setMatched(result.data);
       setMatchedIsoCodes(
@@ -75,6 +76,7 @@ export function useExplorerFilters() {
     const query = filtersToQueryRecord(filters);
     router.setParams({
       vertical: query.vertical ?? undefined,
+      horizon: query.horizon ?? undefined,
       minPopulation: query.minPopulation ?? undefined,
       maxCorpTaxRate: query.maxCorpTaxRate ?? undefined,
       minTalentDensity: query.minTalentDensity ?? undefined,

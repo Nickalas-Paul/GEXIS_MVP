@@ -2,14 +2,22 @@ import { StyleSheet, Text, View } from 'react-native';
 
 type Props = {
   dateLabel: string;
+  /** When set, replaces the default "Data:" prefix (e.g. projected horizons). */
+  labelPrefix?: string;
   style?: object;
 };
 
-export default function DataFreshnessPill({ dateLabel, style }: Props) {
+export default function DataFreshnessPill({
+  dateLabel,
+  labelPrefix = 'Data',
+  style,
+}: Props) {
   return (
     <View style={StyleSheet.flatten([styles.pill, style])} pointerEvents="none">
       <Text style={styles.dot}>●</Text>
-      <Text style={styles.text}>Data: {dateLabel}</Text>
+      <Text style={styles.text}>
+        {labelPrefix}: {dateLabel}
+      </Text>
     </View>
   );
 }

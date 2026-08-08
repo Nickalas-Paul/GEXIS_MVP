@@ -37,6 +37,55 @@ function numOrNull(value: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/** Load projected dimension scores for all geographies at a horizon. */
+async function loadProjectedByGeo(
+  horizon: TrendHorizon
+): Promise<Map<string, Partial<Record<DimensionKey, number>>>> {
+  const projCol = horizon === '2yr' ? 'projected_2yr' : 'projected_5yr';
+  const trendResult = await pool.query<{
+    geography_id: string;
+    dimension: string;
+    projected: string | null;
+  }>(
+    `
+    SELECT
+      geography_id::text AS geography_id,
+      dimension,
+      ${projCol}::text AS projected
+    FROM trend_scores
+    WHERE ${projCol} IS NOT NULL
+    `
+  );
+  const projectedByGeo = new Map<string, Partial<Record<DimensionKey, number>>>();
+  for (const row of trendResult.rows) {
+    const dim = row.dimension as DimensionKey;
+    if (!DIMENSION_KEYS.includes(dim)) continue;
+    const projected = numOrNull(row.projected);
+    if (projected == null) continue;
+    let bucket = projectedByGeo.get(row.geography_id);
+    if (!bucket) {
+      bucket = {};
+      projectedByGeo.set(row.geography_id, bucket);
+    }
+    bucket[dim] = projected;
+  }
+  return projectedByGeo;
+}
+
+function applyProjectedDimensions(
+  dims: Partial<Record<DimensionKey, number | null>> | null | undefined,
+  projections: Partial<Record<DimensionKey, number>> | undefined
+): Partial<Record<DimensionKey, number | null>> {
+  const base = { ...(dims ?? {}) };
+  if (!projections) return base;
+  for (const key of DIMENSION_KEYS) {
+    if (projections[key] != null) {
+      base[key] = projections[key]!;
+    }
+  }
+  return base;
+}
+
 const router = Router();
 
 type Confidence = 'high' | 'medium' | 'low';
@@ -528,54 +577,13 @@ router.get('/geojson', async (req: Request, res: Response) => {
       [STORED_MVI_VERTICAL]
     );
 
-    /** geography_id → dimension → projected score */
-    const projectedByGeo = new Map<string, Partial<Record<DimensionKey, number>>>();
-    if (horizon) {
-      const projCol =
-        horizon === '2yr' ? 'projected_2yr' : 'projected_5yr';
-      const trendResult = await pool.query<{
-        geography_id: string;
-        dimension: string;
-        projected: string | null;
-      }>(
-        `
-        SELECT
-          geography_id::text AS geography_id,
-          dimension,
-          ${projCol}::text AS projected
-        FROM trend_scores
-        WHERE ${projCol} IS NOT NULL
-        `
-      );
-      for (const row of trendResult.rows) {
-        const dim = row.dimension as DimensionKey;
-        if (!DIMENSION_KEYS.includes(dim)) continue;
-        const projected = numOrNull(row.projected);
-        if (projected == null) continue;
-        let bucket = projectedByGeo.get(row.geography_id);
-        if (!bucket) {
-          bucket = {};
-          projectedByGeo.set(row.geography_id, bucket);
-        }
-        bucket[dim] = projected;
-      }
-    }
+    const projectedByGeo = horizon ? await loadProjectedByGeo(horizon) : null;
 
     const features = result.rows.map((row) => {
       const dims = row.dimensions ?? ({} as MviDimensions);
-      let overallDims: Partial<Record<DimensionKey, number | null>> = dims;
-      if (horizon) {
-        const projections = projectedByGeo.get(row.id);
-        if (projections) {
-          overallDims = { ...dims };
-          for (const key of DIMENSION_KEYS) {
-            if (projections[key] != null) {
-              overallDims[key] = projections[key]!;
-            }
-            // else keep current dimension score (or null)
-          }
-        }
-      }
+      const overallDims = horizon
+        ? applyProjectedDimensions(dims, projectedByGeo?.get(row.id))
+        : dims;
       const overall = computeWeightedOverall(overallDims, vertical);
       return {
         type: 'Feature',
@@ -629,6 +637,11 @@ router.post('/filter', async (req: Request, res: Response) => {
   try {
     const body = req.body ?? {};
     const vertical = parseVertical(body.vertical);
+    const horizon = parseHorizon(body.horizon);
+    if (body.horizon !== undefined && body.horizon !== null && body.horizon !== '' && horizon == null) {
+      res.status(400).json(apiError('horizon must be 2yr or 5yr'));
+      return;
+    }
     const nestedFilters =
       body.filters && typeof body.filters === 'object'
         ? (body.filters as Record<string, unknown>)
@@ -636,7 +649,13 @@ router.post('/filter', async (req: Request, res: Response) => {
     // Accept nested `filters` or top-level min*/max* keys (verify / clients).
     const filters: Record<string, unknown> = { ...nestedFilters };
     for (const [key, value] of Object.entries(body)) {
-      if (key === 'filters' || key === 'vertical' || key === 'sort' || key === 'limit') {
+      if (
+        key === 'filters' ||
+        key === 'vertical' ||
+        key === 'sort' ||
+        key === 'limit' ||
+        key === 'horizon'
+      ) {
         continue;
       }
       if (
@@ -668,34 +687,38 @@ router.post('/filter', async (req: Request, res: Response) => {
     addNumFilter(filters.minOverallScore, 'm.overall_score >= ?');
     addNumFilter(filters.maxOverallScore, 'm.overall_score <= ?');
     addNumFilter(filters.minPopulation, 'g.population >= ?');
-    addNumFilter(
-      filters.minTalentDensity,
-      `(m.dimensions->>'talentDensity')::numeric >= ?`
-    );
-    addNumFilter(
-      filters.maxCompetitorSaturation,
-      `(m.dimensions->>'competitorSaturation')::numeric <= ?`
-    );
-    addNumFilter(
-      filters.minRegulatoryEase,
-      `(m.dimensions->>'regulatoryEase')::numeric >= ?`
-    );
-    addNumFilter(
-      filters.minInfrastructure,
-      `(m.dimensions->>'infrastructure')::numeric >= ?`
-    );
-    addNumFilter(
-      filters.minMarketSizeAndGrowth,
-      `(m.dimensions->>'marketSizeAndGrowth')::numeric >= ?`
-    );
-    addNumFilter(
-      filters.minTaxEnvironment,
-      `(m.dimensions->>'taxEnvironment')::numeric >= ?`
-    );
-    addNumFilter(
-      filters.minTrajectory,
-      `(m.dimensions->>'trajectory')::numeric >= ?`
-    );
+
+    // When projecting, dimension score filters are applied in memory on projected dims.
+    if (!horizon) {
+      addNumFilter(
+        filters.minTalentDensity,
+        `(m.dimensions->>'talentDensity')::numeric >= ?`
+      );
+      addNumFilter(
+        filters.maxCompetitorSaturation,
+        `(m.dimensions->>'competitorSaturation')::numeric <= ?`
+      );
+      addNumFilter(
+        filters.minRegulatoryEase,
+        `(m.dimensions->>'regulatoryEase')::numeric >= ?`
+      );
+      addNumFilter(
+        filters.minInfrastructure,
+        `(m.dimensions->>'infrastructure')::numeric >= ?`
+      );
+      addNumFilter(
+        filters.minMarketSizeAndGrowth,
+        `(m.dimensions->>'marketSizeAndGrowth')::numeric >= ?`
+      );
+      addNumFilter(
+        filters.minTaxEnvironment,
+        `(m.dimensions->>'taxEnvironment')::numeric >= ?`
+      );
+      addNumFilter(
+        filters.minTrajectory,
+        `(m.dimensions->>'trajectory')::numeric >= ?`
+      );
+    }
 
     // Raw corp tax rate (percent) — latest non-null tax_foundation value
     if (
@@ -771,7 +794,64 @@ router.post('/filter', async (req: Request, res: Response) => {
       params
     );
 
-    let data = result.rows.map((row) => mapGeography(row, { vertical }));
+    const projectedByGeo = horizon ? await loadProjectedByGeo(horizon) : null;
+
+    let data = result.rows.map((row) => {
+      const mapped = mapGeography(row, { vertical });
+      if (!horizon || !mapped.mvi) return mapped;
+      const dims = applyProjectedDimensions(
+        (mapped.mvi as { dimensions?: MviDimensions | null }).dimensions,
+        projectedByGeo?.get(row.id)
+      );
+      const overall = computeWeightedOverall(dims, vertical);
+      return {
+        ...mapped,
+        mvi: {
+          ...(mapped.mvi as Record<string, unknown>),
+          dimensions: dims,
+          overall,
+        },
+      };
+    });
+
+    if (horizon) {
+      const dimVal = (
+        item: (typeof data)[number],
+        key: DimensionKey
+      ): number | null => {
+        const dims = (item.mvi as { dimensions?: Record<string, number | null> } | null)
+          ?.dimensions;
+        const v = dims?.[key];
+        return v == null ? null : Number(v);
+      };
+      const passes = (item: (typeof data)[number]): boolean => {
+        const checkMin = (raw: unknown, key: DimensionKey) => {
+          if (raw === null || raw === undefined || raw === '') return true;
+          const n = Number(raw);
+          if (Number.isNaN(n)) return true;
+          const v = dimVal(item, key);
+          return v != null && v >= n;
+        };
+        const checkMax = (raw: unknown, key: DimensionKey) => {
+          if (raw === null || raw === undefined || raw === '') return true;
+          const n = Number(raw);
+          if (Number.isNaN(n)) return true;
+          const v = dimVal(item, key);
+          return v != null && v <= n;
+        };
+        return (
+          checkMin(filters.minTalentDensity, 'talentDensity') &&
+          checkMax(filters.maxCompetitorSaturation, 'competitorSaturation') &&
+          checkMin(filters.minRegulatoryEase, 'regulatoryEase') &&
+          checkMin(filters.minInfrastructure, 'infrastructure') &&
+          checkMin(filters.minMarketSizeAndGrowth, 'marketSizeAndGrowth') &&
+          checkMin(filters.minTaxEnvironment, 'taxEnvironment') &&
+          checkMin(filters.minTrajectory, 'trajectory')
+        );
+      };
+      data = data.filter(passes);
+    }
+
     if (sortField === 'overall') {
       const dir = sortDir === 'ASC' ? 1 : -1;
       data = [...data].sort((a, b) => {
@@ -789,11 +869,12 @@ router.post('/filter', async (req: Request, res: Response) => {
       apiResponse(data, {
         total: data.length,
         vertical,
+        horizon: horizon ?? null,
         dataVersion: MVI_SCORING_VERSION,
         limit,
-        // MVP note: maxCorpTaxRate filters raw tax_foundation rates;
-        // other dimension filters use 0–100 MVI dimension scores.
-        filterMode: 'dimensions_plus_raw_corp_tax',
+        filterMode: horizon
+          ? 'projected_dimensions_plus_raw_corp_tax'
+          : 'dimensions_plus_raw_corp_tax',
       })
     );
   } catch (err) {

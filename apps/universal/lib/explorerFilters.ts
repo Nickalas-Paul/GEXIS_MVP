@@ -1,8 +1,11 @@
 import type { GeographyFilters } from '@/services/geographies';
 import { DEFAULT_INDUSTRY_VERTICAL } from '@/lib/industryVerticals';
 
+export type TimeHorizon = 'current' | '2yr' | '5yr';
+
 export type ExplorerFilterState = {
   industryVertical: string;
+  horizon: TimeHorizon;
   minPopulation: number;
   maxCorpTaxRate: number;
   minTalentDensity: number;
@@ -12,6 +15,7 @@ export type ExplorerFilterState = {
 
 export const DEFAULT_FILTERS: ExplorerFilterState = {
   industryVertical: DEFAULT_INDUSTRY_VERTICAL,
+  horizon: 'current',
   minPopulation: 0,
   maxCorpTaxRate: 50,
   minTalentDensity: 0,
@@ -68,6 +72,7 @@ export function toApiFilters(state: ExplorerFilterState): GeographyFilters {
 export function filtersEqual(a: ExplorerFilterState, b: ExplorerFilterState): boolean {
   return (
     a.industryVertical === b.industryVertical &&
+    a.horizon === b.horizon &&
     a.minPopulation === b.minPopulation &&
     a.maxCorpTaxRate === b.maxCorpTaxRate &&
     a.minTalentDensity === b.minTalentDensity &&
@@ -90,11 +95,16 @@ export function parseFiltersFromParams(
     return Number.isFinite(n) ? n : fallback;
   };
 
+  const horizonRaw = one('horizon');
+  const horizon: TimeHorizon =
+    horizonRaw === '2yr' || horizonRaw === '5yr' ? horizonRaw : 'current';
+
   return {
     industryVertical:
       one('vertical') === 'all_industries'
         ? DEFAULT_FILTERS.industryVertical
         : one('vertical') || DEFAULT_FILTERS.industryVertical,
+    horizon,
     minPopulation: num('minPopulation', DEFAULT_FILTERS.minPopulation),
     maxCorpTaxRate: num('maxCorpTaxRate', DEFAULT_FILTERS.maxCorpTaxRate),
     minTalentDensity: num('minTalentDensity', DEFAULT_FILTERS.minTalentDensity),
@@ -112,6 +122,9 @@ export function filtersToQueryRecord(
   const out: Record<string, string> = {};
   if (state.industryVertical !== DEFAULT_FILTERS.industryVertical) {
     out.vertical = state.industryVertical;
+  }
+  if (state.horizon !== DEFAULT_FILTERS.horizon) {
+    out.horizon = state.horizon;
   }
   if (state.minPopulation !== DEFAULT_FILTERS.minPopulation) {
     out.minPopulation = String(state.minPopulation);
