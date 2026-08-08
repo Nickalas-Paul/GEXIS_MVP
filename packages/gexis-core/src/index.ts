@@ -37,8 +37,16 @@ export {
 export {
   MVI_DIMENSION_DISPLAY,
   SOURCE_DISPLAY_NAMES,
+  MVI_SOURCE_CATALOG,
+  MVI_SCORING_VERSION_LABEL,
   getDimensionDisplay,
   sourceDisplayName,
+  formatNormalization,
+  formatDirection,
   type DimensionKey,
   type DimensionDisplay,
+  type IndicatorDisplay,
+  type IndicatorDirection,
+  type IndicatorNormalization,
+  type SourceCatalogEntry,
 } from "./mviDisplay";

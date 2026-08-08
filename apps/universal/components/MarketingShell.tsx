@@ -7,26 +7,45 @@ import { MarketingNav } from '@/components/MarketingNav';
 
 type MarketingShellProps = {
   children: ReactNode;
+  /** Light = marketing pages; dark = product docs (methodology). */
+  theme?: 'light' | 'dark';
 };
 
-export function MarketingShell({ children }: MarketingShellProps) {
+export function MarketingShell({ children, theme = 'light' }: MarketingShellProps) {
+  const dark = theme === 'dark';
+
   if (Platform.OS === 'web') {
     return (
-      <View style={styles.webContainer}>
-        <MarketingNav />
-        <View style={styles.webBody}>{children}</View>
+      <View style={[styles.webContainer, dark && styles.webContainerDark]}>
+        <MarketingNav theme={theme} />
+        <ScrollView
+          style={styles.webScroll}
+          contentContainerStyle={[
+            styles.webScrollContent,
+            dark && styles.webScrollContentDark,
+          ]}
+          keyboardShouldPersistTaps="handled"
+        >
+          {children}
+        </ScrollView>
       </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.nativeSafe} edges={['top', 'left', 'right', 'bottom']}>
-      <View style={styles.nativeHeader}>
-        <Text style={styles.brand}>GEXIS</Text>
+    <SafeAreaView
+      style={[styles.nativeSafe, dark && styles.nativeSafeDark]}
+      edges={['top', 'left', 'right', 'bottom']}
+    >
+      <View style={[styles.nativeHeader, dark && styles.nativeHeaderDark]}>
+        <Text style={[styles.brand, dark && styles.brandDark]}>GEXIS</Text>
       </View>
       <ScrollView
         style={styles.nativeScroll}
-        contentContainerStyle={styles.nativeScrollContent}
+        contentContainerStyle={[
+          styles.nativeScrollContent,
+          dark && styles.nativeScrollContentDark,
+        ]}
         keyboardShouldPersistTaps="handled"
       >
         {children}
@@ -45,15 +64,29 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f7f7f5',
   },
-  webBody: {
+  webContainerDark: {
+    backgroundColor: '#0b0b12',
+  },
+  webScroll: {
     flex: 1,
+  },
+  webScrollContent: {
     padding: 24,
-    justifyContent: 'center',
+    paddingBottom: 64,
+    maxWidth: 880,
+    width: '100%',
+    alignSelf: 'center',
     gap: 12,
+  },
+  webScrollContentDark: {
+    paddingVertical: 32,
   },
   nativeSafe: {
     flex: 1,
     backgroundColor: '#f7f7f5',
+  },
+  nativeSafeDark: {
+    backgroundColor: '#0b0b12',
   },
   nativeHeader: {
     paddingHorizontal: 20,
@@ -62,9 +95,16 @@ const styles = StyleSheet.create({
     borderBottomColor: '#e2e2de',
     backgroundColor: '#ffffff',
   },
+  nativeHeaderDark: {
+    backgroundColor: '#0e0e16',
+    borderBottomColor: '#1c1c2a',
+  },
   brand: {
     fontSize: 18,
     fontWeight: '700',
+  },
+  brandDark: {
+    color: '#ffffff',
   },
   nativeScroll: {
     flex: 1,
@@ -73,7 +113,9 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     padding: 24,
     gap: 12,
-    justifyContent: 'center',
+  },
+  nativeScrollContentDark: {
+    paddingBottom: 48,
   },
   cta: {
     marginTop: 16,
