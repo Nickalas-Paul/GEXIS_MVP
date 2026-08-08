@@ -162,6 +162,7 @@ function DimensionCard({
   score,
   confidence,
   sources,
+  onSourcePress,
 }: {
   dimKey: string;
   label: string;
@@ -169,6 +170,7 @@ function DimensionCard({
   score: number | null;
   confidence: string | null;
   sources: MviSourceRef[];
+  onSourcePress: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const color = mviScoreColor(score);
@@ -211,9 +213,19 @@ function DimensionCard({
       {sourceLabels.length > 0 ? (
         <View style={styles.tagRow}>
           {sourceLabels.map((tag) => (
-            <View key={`${dimKey}-${tag}`} style={styles.tag}>
+            <Pressable
+              key={`${dimKey}-${tag}`}
+              style={styles.tag}
+              onPress={(e) => {
+                // Avoid toggling the parent card expand when opening methodology
+                e?.stopPropagation?.();
+                onSourcePress();
+              }}
+              accessibilityRole="link"
+              accessibilityLabel={`${tag} — MVI methodology`}
+            >
               <Text style={styles.tagText}>{tag}</Text>
-            </View>
+            </Pressable>
           ))}
         </View>
       ) : (
@@ -396,6 +408,7 @@ export default function GeographyDetailScreen() {
                       score={score}
                       confidence={data.mvi?.confidence ?? null}
                       sources={dimSources}
+                      onSourcePress={() => router.push('/docs/methodology')}
                     />
                   );
                 })}
