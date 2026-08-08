@@ -1,3 +1,4 @@
+import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -21,6 +22,10 @@ import GeographySearch, {
 import MviLegend from '@/components/explorer/MviLegend';
 import TopMatchesList from '@/components/explorer/TopMatchesList';
 import type { MapFlyToTarget } from '@/components/Map.types';
+import {
+  COMPARE_MAX,
+  useCompareSelection,
+} from '@/hooks/useCompareSelection';
 import { useExplorerFilters } from '@/hooks/useExplorerFilters';
 import {
   fetchGeographiesGeojson,
@@ -33,6 +38,7 @@ import {
 const DESKTOP_BREAKPOINT = 768;
 
 export default function ExplorerScreen() {
+  const router = useRouter();
   const { width } = useWindowDimensions();
   const isDesktop = width >= DESKTOP_BREAKPOINT;
   const {
@@ -43,6 +49,7 @@ export default function ExplorerScreen() {
     matchedIsoCodes,
     filtering,
   } = useExplorerFilters();
+  const { selected, compareHref, clearCompare } = useCompareSelection();
 
   const [geojson, setGeojson] = useState<GeographyFeatureCollection | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -309,6 +316,31 @@ export default function ExplorerScreen() {
           />
         </BottomSheet>
       ) : null}
+
+      {selected.length > 0 ? (
+        <View style={styles.compareBar} pointerEvents="box-none">
+          <View style={styles.compareBarInner}>
+            <Text style={styles.compareBarText} numberOfLines={1}>
+              Comparing: {selected.join(', ')} ({selected.length}/{COMPARE_MAX})
+            </Text>
+            <View style={styles.compareBarActions}>
+              {selected.length >= 2 ? (
+                <Pressable
+                  style={styles.compareBarBtn}
+                  onPress={() => router.push(compareHref as `/explorer/compare`)}
+                >
+                  <Text style={styles.compareBarBtnText}>View compare →</Text>
+                </Pressable>
+              ) : (
+                <Text style={styles.compareBarHint}>Add one more</Text>
+              )}
+              <Pressable onPress={clearCompare} hitSlop={8}>
+                <Text style={styles.compareBarClear}>Clear</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -448,5 +480,56 @@ const styles = StyleSheet.create({
     width: '100%',
     borderLeftWidth: 0,
     flex: 1,
+  },
+  compareBar: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    bottom: 16,
+    zIndex: 40,
+  },
+  compareBarInner: {
+    backgroundColor: 'rgba(14,14,22,0.96)',
+    borderWidth: 1,
+    borderColor: '#2a2a3e',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    flexWrap: 'wrap',
+  },
+  compareBarText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
+    flexShrink: 1,
+    fontFamily: 'monospace',
+  },
+  compareBarActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  compareBarBtn: {
+    backgroundColor: '#1a3a6e',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  compareBarBtnText: {
+    color: '#c8dcff',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  compareBarHint: {
+    color: 'rgba(255,255,255,0.45)',
+    fontSize: 12,
+  },
+  compareBarClear: {
+    color: 'rgba(255,255,255,0.55)',
+    fontSize: 13,
   },
 });

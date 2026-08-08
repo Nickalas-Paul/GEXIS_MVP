@@ -10,6 +10,10 @@ import {
 } from 'react-native';
 
 import {
+  COMPARE_MAX,
+  useCompareSelection,
+} from '@/hooks/useCompareSelection';
+import {
   fetchGeographyById,
   type GeographyListItem,
 } from '@/services/geographies';
@@ -50,6 +54,8 @@ export default function GeographyDrillDown({
   style,
 }: Props) {
   const router = useRouter();
+  const { addToCompare, removeFromCompare, isSelected, isAtMax, selected } =
+    useCompareSelection();
   const [data, setData] = useState<GeographyListItem | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -181,6 +187,33 @@ export default function GeographyDrillDown({
               }}
             >
               <Text style={styles.actionText}>Full breakdown →</Text>
+            </Pressable>
+            <Pressable
+              style={StyleSheet.flatten([
+                styles.actionBtn,
+                styles.actionBtnSecondary,
+                isSelected(geoKey) && styles.actionBtnCompareActive,
+                isAtMax && !isSelected(geoKey) && styles.actionBtnDisabled,
+              ])}
+              disabled={isAtMax && !isSelected(geoKey)}
+              onPress={() => {
+                if (isSelected(geoKey)) removeFromCompare(geoKey);
+                else addToCompare(geoKey);
+              }}
+            >
+              <Text
+                style={
+                  isSelected(geoKey)
+                    ? styles.actionText
+                    : styles.actionTextSecondary
+                }
+              >
+                {isSelected(geoKey)
+                  ? `In compare (${selected.length}/${COMPARE_MAX})`
+                  : isAtMax
+                    ? `Compare full (${COMPARE_MAX}/${COMPARE_MAX})`
+                    : 'Add to compare'}
+              </Text>
             </Pressable>
             <Pressable
               style={StyleSheet.flatten([
@@ -342,6 +375,13 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
     borderWidth: 1,
     borderColor: '#2a2a3e',
+  },
+  actionBtnCompareActive: {
+    backgroundColor: '#2a4a3e',
+    borderColor: '#2a4a3e',
+  },
+  actionBtnDisabled: {
+    opacity: 0.45,
   },
   actionText: {
     color: '#c8dcff',

@@ -18,6 +18,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { mviScoreColor } from '@/lib/mviColors';
 import {
+  COMPARE_MAX,
+  useCompareSelection,
+} from '@/hooks/useCompareSelection';
+import {
   getGeographyDetail,
   type GeographyDetail,
   type MviSourceRef,
@@ -262,6 +266,15 @@ export default function GeographyDetailScreen() {
   const geographyId = String(params.geographyId ?? '').trim();
   const vertical = String(params.vertical ?? 'all').trim() || 'all';
 
+  const {
+    selected,
+    addToCompare,
+    removeFromCompare,
+    isSelected,
+    isAtMax,
+    compareHref,
+  } = useCompareSelection();
+
   const [data, setData] = useState<GeographyDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -415,15 +428,53 @@ export default function GeographyDetailScreen() {
               </View>
 
               <View style={styles.actionsRow}>
-                <Pressable
-                  style={styles.actionBtn}
-                  onPress={() => {
-                    // Wired in Step 4
-                    if (__DEV__) console.log('[detail] Compare placeholder', data.isoCode);
-                  }}
-                >
-                  <Text style={styles.actionText}>⇄ Compare</Text>
-                </Pressable>
+                {(() => {
+                  const iso = data.isoCode ?? data.id;
+                  const inCompare = isSelected(iso);
+                  const compareLabel = inCompare
+                    ? `Remove from compare (${selected.length}/${COMPARE_MAX})`
+                    : isAtMax
+                      ? `Compare full (${COMPARE_MAX}/${COMPARE_MAX})`
+                      : selected.length > 0
+                        ? `⇄ Compare (${selected.length}/${COMPARE_MAX})`
+                        : '⇄ Compare';
+                  return (
+                    <Pressable
+                      style={[
+                        styles.actionBtn,
+                        inCompare && styles.actionBtnActive,
+                        isAtMax && !inCompare && styles.actionBtnDisabled,
+                      ]}
+                      disabled={isAtMax && !inCompare}
+                      onPress={() => {
+                        if (inCompare) {
+                          removeFromCompare(iso);
+                        } else {
+                          addToCompare(iso);
+                        }
+                      }}
+                    >
+                      <Text
+                        style={[
+                          styles.actionText,
+                          isAtMax && !inCompare && styles.actionTextDisabled,
+                        ]}
+                      >
+                        {compareLabel}
+                      </Text>
+                    </Pressable>
+                  );
+                })()}
+                {selected.length >= 2 ? (
+                  <Pressable
+                    style={[styles.actionBtn, styles.actionBtnGhost]}
+                    onPress={() => router.push(compareHref as `/explorer/compare`)}
+                  >
+                    <Text style={styles.actionTextGhost}>
+                      View comparison → ({selected.length})
+                    </Text>
+                  </Pressable>
+                ) : null}
                 <Pressable
                   style={[styles.actionBtn, styles.actionBtnGhost]}
                   onPress={() => {
@@ -774,6 +825,12 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 16,
   },
+  actionBtnActive: {
+    backgroundColor: '#2a4a3e',
+  },
+  actionBtnDisabled: {
+    opacity: 0.45,
+  },
   actionBtnGhost: {
     backgroundColor: 'transparent',
     borderWidth: 1,
@@ -783,6 +840,9 @@ const styles = StyleSheet.create({
     color: '#c8dcff',
     fontSize: 14,
     fontWeight: '600',
+  },
+  actionTextDisabled: {
+    color: 'rgba(255,255,255,0.45)',
   },
   actionTextGhost: {
     color: 'rgba(255,255,255,0.7)',
