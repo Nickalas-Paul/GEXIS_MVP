@@ -27,3 +27,9 @@ export {
   DEFAULT_MAP_VIEWPORT,
   type MapViewport,
 } from "./mapConfig";
+
+export {
+  COUNTRY_QUICK_FACTS,
+  getQuickFacts,
+  type CountryQuickFacts,
+} from "./quickFacts";
