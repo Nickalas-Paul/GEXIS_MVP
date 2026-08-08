@@ -19,13 +19,33 @@ import {
 import { mviScoreColor } from '@/lib/mviColors';
 import {
   getGeographyDetail,
+  getGeographyTrends,
+  type DimensionTrend,
   type GeographyDetail,
   type QuickFacts,
 } from '@/services/geographies';
 
 type ColumnResult =
-  | { iso: string; status: 'ok'; data: GeographyDetail }
+  | {
+      iso: string;
+      status: 'ok';
+      data: GeographyDetail;
+      trends: Record<string, DimensionTrend | null>;
+    }
   | { iso: string; status: 'error'; error: string };
+
+function trendArrow(direction: DimensionTrend['direction'] | undefined): string {
+  if (direction === 'improving') return '↑';
+  if (direction === 'declining') return '↓';
+  if (direction === 'stable') return '→';
+  return '';
+}
+
+function trendArrowColor(direction: DimensionTrend['direction'] | undefined): string {
+  if (direction === 'improving') return '#3ecf8e';
+  if (direction === 'declining') return '#d96b6b';
+  return '#8b8b9a';
+}
 
 function parseCompareParam(raw: string | string[] | undefined): string[] {
   if (raw == null) return [];
@@ -117,8 +137,16 @@ export default function CompareMarketsScreen() {
     void Promise.all(
       isos.map(async (iso): Promise<ColumnResult> => {
         try {
-          const data = await getGeographyDetail(iso);
-          return { iso, status: 'ok', data };
+          const [data, trendPayload] = await Promise.all([
+            getGeographyDetail(iso),
+            getGeographyTrends(iso).catch(() => null),
+          ]);
+          return {
+            iso,
+            status: 'ok',
+            data,
+            trends: trendPayload?.trends ?? {},
+          };
         } catch (err) {
           return {
             iso,
@@ -257,7 +285,7 @@ export default function CompareMarketsScreen() {
                 ))}
               </View>
 
-              {/* Dimension rows */}
+              {/* Dimension rows (7 including Trajectory) */}
               {MVI_DIMENSION_DISPLAY.map((dim) => {
                 const scores = columns.map((col) =>
                   col.status === 'ok'
@@ -267,6 +295,9 @@ export default function CompareMarketsScreen() {
                 const leaders = leaderIndexes(scores);
                 return (
                   <View key={dim.key} style={styles.dimBlock}>
+                    {dim.isComposite ? (
+                      <Text style={styles.momentumHeader}>MOMENTUM</Text>
+                    ) : null}
                     <Text style={styles.dimLabel}>{dim.label}</Text>
                     <View style={styles.dimRow}>
                       {columns.map((col, idx) => {
@@ -275,6 +306,11 @@ export default function CompareMarketsScreen() {
                         const pct =
                           score != null ? Math.max(0, Math.min(100, score)) : 0;
                         const isLeader = leaders.has(idx);
+                        const direction =
+                          !dim.isComposite && col.status === 'ok'
+                            ? col.trends[dim.key]?.direction
+                            : undefined;
+                        const arrow = trendArrow(direction);
                         return (
                           <View
                             key={`${dim.key}-${col.iso}`}
@@ -297,6 +333,16 @@ export default function CompareMarketsScreen() {
                               >
                                 {score != null ? Math.round(score) : '—'}
                               </Text>
+                              {arrow ? (
+                                <Text
+                                  style={[
+                                    styles.trendArrow,
+                                    { color: trendArrowColor(direction) },
+                                  ]}
+                                >
+                                  {arrow}
+                                </Text>
+                              ) : null}
                               {isLeader ? (
                                 <Text style={styles.leaderMark}>★</Text>
                               ) : null}
@@ -555,6 +601,14 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
   },
+  momentumHeader: {
+    color: 'rgba(255,255,255,0.45)',
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 1.4,
+    marginBottom: 4,
+    marginTop: 8,
+  },
   dimRow: {
     flexDirection: 'row',
     gap: 8,
@@ -584,6 +638,11 @@ const styles = StyleSheet.create({
   leaderMark: {
     color: 'rgba(255,220,120,0.85)',
     fontSize: 12,
+  },
+  trendArrow: {
+    fontSize: 13,
+    fontWeight: '700',
+    marginLeft: 2,
   },
   barTrack: {
     height: 5,
