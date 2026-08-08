@@ -4,13 +4,19 @@ MVI scoring engine.
 Reads raw_indicators + scoring_config, writes mvi_scores for industry_vertical
 'all_industries'. Deterministic: same inputs produce the same scores.
 
+Dependency order:
+    1. python compute_trends.py   # writes trend_scores used for Trajectory
+    2. python compute_mvi.py      # this module — reads trend_scores
+
+Trajectory is a composite 7th dimension derived from trend_scores (direction /
+annualized_rate of the six base dimensions), not from raw_indicators.
+
 Usage:
     python compute_mvi.py
 """
 
 from __future__ import annotations
 
-import json
 import logging
 import math
 import sys
@@ -23,6 +29,7 @@ from psycopg2.extras import Json
 from config import LOGS_DIR
 from db import get_cursor
 from scoring_config import (
+    BASE_DIMENSION_KEYS,
     DIMENSIONS,
     INDUSTRY_VERTICAL,
     MIN_DIMENSIONS_FOR_OVERALL,
@@ -105,6 +112,57 @@ def fetch_latest_indicator_values(
     return {row[0]: (float(row[1]), int(row[2])) for row in cursor.fetchall()}
 
 
+def fetch_trend_rates(cursor) -> dict[str, dict[str, float]]:
+    """
+    Load annualized_rate per geography × base dimension from trend_scores.
+    Returns {geography_id: {dimension: annualized_rate}}.
+    """
+    cursor.execute(
+        """
+        SELECT geography_id::text, dimension, annualized_rate::float8
+        FROM trend_scores
+        WHERE annualized_rate IS NOT NULL
+        """
+    )
+    out: dict[str, dict[str, float]] = defaultdict(dict)
+    for geo_id, dimension, rate in cursor.fetchall():
+        if dimension not in BASE_DIMENSION_KEYS:
+            continue
+        out[geo_id][dimension] = float(rate)
+    return out
+
+
+def rate_to_trend_score(rate: float) -> float:
+    """
+    Smooth map of annualized rate (pts/year on 0–100 scale) → 0–100 trend score.
+
+    Calibration (guidelines, not hard bins):
+      ≤ -3 → ~10–15;  -1 → ~25–35;  0 → ~50;  +1 → ~65–75;  ≥ +3 → ~85–95
+    """
+    # tanh scale chosen so mid-range rates land in the guideline bands
+    score = 50.0 + 40.0 * math.tanh(rate / 2.0)
+    return float(min(100.0, max(0.0, score)))
+
+
+def compute_trajectory_score(
+    dim_rates: dict[str, float],
+    vertical_weights: dict[str, float],
+) -> float | None:
+    """
+    Weighted average of per-dimension trend scores using the same vertical
+    weights as the base dimensions (missing dims redistribute).
+    """
+    parts: list[tuple[float, float]] = []
+    for dim_key in BASE_DIMENSION_KEYS:
+        if dim_key not in dim_rates:
+            continue
+        weight = float(vertical_weights.get(dim_key, 0.0))
+        if weight <= 0:
+            continue
+        parts.append((rate_to_trend_score(dim_rates[dim_key]), weight))
+    return weighted_average(parts)
+
+
 def weighted_average(
     parts: list[tuple[float, float]],
 ) -> float | None:
@@ -123,12 +181,17 @@ def compute_confidence(
     indicators_total: int,
     used_proxy: bool,
 ) -> str:
+    """
+    High: 6–7 dimensions scored and ≥60% indicator coverage (proxy caps to medium).
+    Medium: 4–5 dimensions scored, or ≥30% coverage.
+    Low: 1–3 dimensions scored or <30% coverage.
+    """
     coverage = (
         (indicators_present / indicators_total) if indicators_total > 0 else 0.0
     )
-    if dimensions_scored >= 5 and coverage >= 0.60:
+    if dimensions_scored >= 6 and coverage >= 0.60:
         level = "high"
-    elif dimensions_scored >= 3 or coverage >= 0.30:
+    elif dimensions_scored >= 4 or coverage >= 0.30:
         level = "medium"
     else:
         level = "low"
@@ -194,7 +257,9 @@ def upsert_mvi_score(
 def compute_all() -> None:
     vertical_weights = VERTICAL_WEIGHTS[INDUSTRY_VERTICAL]
     total_configured_indicators = sum(
-        len(dim["indicators"]) for dim in DIMENSIONS.values()
+        len(dim["indicators"])
+        for dim in DIMENSIONS.values()
+        if not dim.get("is_composite")
     )
 
     with get_cursor() as cursor:
@@ -207,18 +272,27 @@ def compute_all() -> None:
             """
         )
         geography_ids = [row[0] for row in cursor.fetchall()]
-        logger.info("Scoring %s countries for vertical=%s", len(geography_ids), INDUSTRY_VERTICAL)
+        logger.info(
+            "Scoring %s countries for vertical=%s (7-dimension model)",
+            len(geography_ids),
+            INDUSTRY_VERTICAL,
+        )
+
+        trend_rates = fetch_trend_rates(cursor)
+        logger.info(
+            "Loaded trend rates for %s geographies (for Trajectory)",
+            len(trend_rates),
+        )
 
         # Per indicator: normalized scores + provenance
         # indicator_scores[dim_key][indicator_index] = {geo_id: score}
         indicator_scores: dict[str, list[dict[str, float]]] = {}
         indicator_years: dict[str, list[dict[str, int]]] = {}
-        indicator_meta: dict[str, list[dict[str, Any]]] = {}
 
-        for dim_key, dim_cfg in DIMENSIONS.items():
+        for dim_key in BASE_DIMENSION_KEYS:
+            dim_cfg = DIMENSIONS[dim_key]
             indicator_scores[dim_key] = []
             indicator_years[dim_key] = []
-            indicator_meta[dim_key] = []
 
             for ind in dim_cfg["indicators"]:
                 raw = fetch_latest_indicator_values(cursor, ind["source"], ind["code"])
@@ -234,7 +308,6 @@ def compute_all() -> None:
                 normalized = min_max_normalize(transformed, ind["direction"])
                 indicator_scores[dim_key].append(normalized)
                 indicator_years[dim_key].append(years)
-                indicator_meta[dim_key].append(ind)
                 logger.info(
                     "Indicator %s/%s: %s countries with data",
                     ind["source"],
@@ -245,8 +318,9 @@ def compute_all() -> None:
         scored = 0
         null_overall = 0
         confidence_counts: dict[str, int] = defaultdict(int)
+        trajectory_present = 0
 
-        # Snapshot scores before write for determinism logging
+        # Snapshot scores for determinism logging
         score_snapshot: dict[str, tuple[int | None, dict]] = {}
 
         for geo_id in geography_ids:
@@ -256,7 +330,8 @@ def compute_all() -> None:
             indicators_present = 0
             used_proxy = False
 
-            for dim_key, dim_cfg in DIMENSIONS.items():
+            for dim_key in BASE_DIMENSION_KEYS:
+                dim_cfg = DIMENSIONS[dim_key]
                 parts: list[tuple[float, float]] = []
                 for idx, ind in enumerate(dim_cfg["indicators"]):
                     scores = indicator_scores[dim_key][idx]
@@ -281,12 +356,25 @@ def compute_all() -> None:
                     round_score(dim_score) if dim_score is not None else None
                 )
 
-            # Overall from available dimensions
+            # Trajectory composite from trend_scores
+            traj_raw = compute_trajectory_score(
+                trend_rates.get(geo_id, {}),
+                vertical_weights,
+            )
+            if traj_raw is not None:
+                dimensions_out["trajectory"] = round_score(traj_raw)
+                trajectory_present += 1
+            else:
+                dimensions_out["trajectory"] = None
+
+            # Overall from available dimensions (up to 7)
             overall_parts: list[tuple[float, float]] = []
             for dim_key, score in dimensions_out.items():
                 if score is None:
                     continue
                 weight = float(vertical_weights.get(dim_key, 0.0))
+                if weight <= 0:
+                    continue
                 overall_parts.append((float(score), weight))
 
             dimensions_scored = len(overall_parts)
@@ -324,17 +412,17 @@ def compute_all() -> None:
                 data_freshness=data_freshness,
                 sources=sources_used,
             )
-            score_snapshot[geo_id] = (overall_score, dimensions_out)
+            score_snapshot[geo_id] = (overall_score, dict(dimensions_out))
             scored += 1
 
         logger.info(
-            "Wrote %s mvi_scores rows (null_overall=%s) confidence=%s",
+            "Wrote %s mvi_scores rows (null_overall=%s trajectory=%s) confidence=%s",
             scored,
             null_overall,
+            trajectory_present,
             dict(confidence_counts),
         )
 
-        # Persist snapshot hash-like summary for logs
         non_null_overalls = [
             s for s, _ in score_snapshot.values() if s is not None
         ]

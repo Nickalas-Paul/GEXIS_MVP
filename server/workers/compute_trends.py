@@ -22,7 +22,7 @@ from scipy import stats
 
 from config import LOGS_DIR
 from db import get_cursor
-from scoring_config import DIMENSIONS
+from scoring_config import BASE_DIMENSION_KEYS, DIMENSIONS
 
 # Direction thresholds (points/year on the 0–100 scale)
 RATE_STABLE_BAND = 0.5
@@ -469,13 +469,14 @@ def compute_all() -> None:
         )
         geography_ids = [row[0] for row in cursor.fetchall()]
         logger.info("Computing trends for %s countries × %s dimensions",
-                    len(geography_ids), len(DIMENSIONS))
+                    len(geography_ids), len(BASE_DIMENSION_KEYS))
 
         written = 0
         direction_counts: dict[str, int] = defaultdict(int)
         confidence_counts: dict[str, int] = defaultdict(int)
 
-        for dim_key, dim_cfg in DIMENSIONS.items():
+        for dim_key in BASE_DIMENSION_KEYS:
+            dim_cfg = DIMENSIONS[dim_key]
             indicator_panels: list[dict[str, dict[int, float]]] = []
             for ind in dim_cfg["indicators"]:
                 rows = fetch_indicator_history(cursor, ind["source"], ind["code"])
