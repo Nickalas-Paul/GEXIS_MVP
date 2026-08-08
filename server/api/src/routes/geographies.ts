@@ -4,6 +4,7 @@
  * Static paths (/search, /geojson, /filter) MUST be registered before /:id.
  */
 
+import { getQuickFacts } from '@gexis/gexis-core';
 import { Router, Request, Response } from 'express';
 import { pool } from '../config/database';
 import {
@@ -120,15 +121,133 @@ function buildMvi(
   return mvi;
 }
 
+interface QuickFactsPayload {
+  population: number | null;
+  gdpPpp: number | null;
+  corpTaxRate: number | null;
+  regulatoryQuality: number | null;
+  easeOfBusiness: string | null;
+  language: string | null;
+  currency: string | null;
+}
+
+async function loadQuickFactsForGeography(
+  geographyId: string,
+  isoCode: string | null
+): Promise<QuickFactsPayload> {
+  const staticFacts = isoCode ? getQuickFacts(isoCode) : null;
+
+  const indicators = await pool.query<{
+    indicator_code: string;
+    value: string;
+  }>(
+    `
+    SELECT DISTINCT ON (indicator_code)
+      indicator_code,
+      value::text AS value
+    FROM raw_indicators
+    WHERE geography_id = $1
+      AND value IS NOT NULL
+      AND indicator_code = ANY($2::text[])
+    ORDER BY indicator_code, year DESC
+    `,
+    [
+      geographyId,
+      [
+        'SP.POP.TOTL',
+        'imf_gdp_ppp',
+        'NY.GDP.MKTP.PP.CD',
+        'NGDPD',
+        'corp_tax_rate',
+        'RQ.PER.RNK',
+      ],
+    ]
+  );
+
+  const byCode = new Map(
+    indicators.rows.map((r) => [r.indicator_code, Number(r.value)])
+  );
+
+  const population = byCode.has('SP.POP.TOTL')
+    ? byCode.get('SP.POP.TOTL')!
+    : null;
+
+  // Prefer IMF PPP (stored as imf_gdp_ppp), then WB PPP, then IMF nominal.
+  const gdpPpp = byCode.has('imf_gdp_ppp')
+    ? byCode.get('imf_gdp_ppp')!
+    : byCode.has('NY.GDP.MKTP.PP.CD')
+      ? byCode.get('NY.GDP.MKTP.PP.CD')!
+      : byCode.has('NGDPD')
+        ? byCode.get('NGDPD')!
+        : null;
+
+  const corpTaxRate = byCode.has('corp_tax_rate')
+    ? byCode.get('corp_tax_rate')!
+    : null;
+
+  const regulatoryQuality = byCode.has('RQ.PER.RNK')
+    ? byCode.get('RQ.PER.RNK')!
+    : null;
+
+  let easeOfBusiness: string | null = null;
+  if (regulatoryQuality != null) {
+    const rankResult = await pool.query<{ rank: string }>(
+      `
+      WITH latest_rq AS (
+        SELECT DISTINCT ON (geography_id)
+          geography_id,
+          value
+        FROM raw_indicators
+        WHERE indicator_code = 'RQ.PER.RNK'
+          AND value IS NOT NULL
+        ORDER BY geography_id, year DESC
+      ),
+      ranked AS (
+        SELECT
+          geography_id,
+          RANK() OVER (ORDER BY value DESC) AS rank
+        FROM latest_rq
+      )
+      SELECT rank::text AS rank
+      FROM ranked
+      WHERE geography_id = $1
+      `,
+      [geographyId]
+    );
+    const rank = rankResult.rows[0]?.rank;
+    if (rank != null) {
+      easeOfBusiness = `#${rank} globally`;
+    }
+  }
+
+  return {
+    population,
+    gdpPpp,
+    corpTaxRate,
+    regulatoryQuality,
+    easeOfBusiness,
+    language: staticFacts?.language ?? null,
+    currency: staticFacts?.currency ?? null,
+  };
+}
+
 function mapGeography(
   row: DbGeoRow,
   opts: {
     includeGeometry?: boolean;
     includeSources?: boolean;
     vertical?: string;
+    quickFacts?: QuickFactsPayload | null;
   } = {}
 ): Record<string, unknown> {
   const vertical = resolveVerticalKey(opts.vertical);
+  const population =
+    opts.quickFacts?.population ??
+    (row.population != null ? Number(row.population) : null);
+  const gdpPpp =
+    opts.quickFacts?.gdpPpp ??
+    (row.gdp_ppp != null ? Number(row.gdp_ppp) : null);
+
   const out: Record<string, unknown> = {
     id: row.id,
     name: row.name,
@@ -148,10 +267,14 @@ function mapGeography(
             north: Number(row.bbox_north),
           }
         : null,
-    population: row.population != null ? Number(row.population) : null,
-    gdpPpp: row.gdp_ppp != null ? Number(row.gdp_ppp) : null,
+    population,
+    gdpPpp,
     mvi: buildMvi(row, Boolean(opts.includeSources), vertical),
   };
+
+  if (opts.quickFacts) {
+    out.quickFacts = opts.quickFacts;
+  }
 
   if (opts.includeGeometry && row.geometry_geojson) {
     out.geometry = JSON.parse(row.geometry_geojson);
@@ -606,12 +729,16 @@ router.get('/:id', async (req: Request, res: Response) => {
       return;
     }
 
+    const row = result.rows[0];
+    const quickFacts = await loadQuickFactsForGeography(row.id, row.iso_code);
+
     res.json(
       apiResponse(
-        mapGeography(result.rows[0], {
+        mapGeography(row, {
           includeGeometry: true,
           includeSources: true,
           vertical,
+          quickFacts,
         })
       )
     );

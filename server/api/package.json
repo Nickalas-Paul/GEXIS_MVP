@@ -24,7 +24,8 @@
     "passport-google-oauth20": "^2.0.0",
     "passport-local": "^1.0.0",
     "pg": "^8.22.0",
-    "redis": "^6.2.0"
+    "redis": "^6.2.0",
+    "@gexis/gexis-core": "^0.1.0"
   },
   "devDependencies": {
     "@types/connect-redis": "^0.0.23",
