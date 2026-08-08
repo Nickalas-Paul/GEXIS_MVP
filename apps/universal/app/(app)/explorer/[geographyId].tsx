@@ -21,6 +21,7 @@ import {
   getGeographyDetail,
   type GeographyDetail,
   type MviSourceRef,
+  type QuickFacts,
 } from '@/services/geographies';
 
 function confidenceColor(c: string | null | undefined): string {
@@ -40,6 +41,97 @@ function formatRefreshDate(iso: string | null | undefined): string {
     year: 'numeric',
     timeZone: 'UTC',
   });
+}
+
+/** Format large counts: 83200000 → "83.2M", 1400000000 → "1.4B". */
+function formatPopulation(n: number | null | undefined): string {
+  if (n == null || Number.isNaN(n)) return '—';
+  const abs = Math.abs(n);
+  if (abs >= 1e9) return `${(n / 1e9).toFixed(1).replace(/\.0$/, '')}B`;
+  if (abs >= 1e6) return `${(n / 1e6).toFixed(1).replace(/\.0$/, '')}M`;
+  if (abs >= 1e3) return `${(n / 1e3).toFixed(1).replace(/\.0$/, '')}K`;
+  return String(Math.round(n));
+}
+
+/**
+ * Format GDP PPP. IMF WEO values are stored in billions USD.
+ * e.g. 5996.2 → "$6.0T", 924.6 → "$924.6B"
+ */
+function formatGdpPpp(n: number | null | undefined): string {
+  if (n == null || Number.isNaN(n)) return '—';
+  const billions = n;
+  if (Math.abs(billions) >= 1000) {
+    return `$${(billions / 1000).toFixed(1).replace(/\.0$/, '')}T`;
+  }
+  if (Math.abs(billions) >= 1) {
+    return `$${billions.toFixed(1).replace(/\.0$/, '')}B`;
+  }
+  return `$${(billions * 1000).toFixed(0)}M`;
+}
+
+function formatCorpTax(n: number | null | undefined): string {
+  if (n == null || Number.isNaN(n)) return '—';
+  return `${n.toFixed(1)}%`;
+}
+
+function QuickFactsPanel({
+  facts,
+  overall,
+  compact,
+}: {
+  facts: QuickFacts | null;
+  overall: number | null;
+  compact?: boolean;
+}) {
+  const rows: Array<{ label: string; value: string }> = [
+    { label: 'Population', value: formatPopulation(facts?.population) },
+    { label: 'GDP (PPP)', value: formatGdpPpp(facts?.gdpPpp) },
+    { label: 'Corp. Tax Rate', value: formatCorpTax(facts?.corpTaxRate) },
+    {
+      label: 'Ease of Business',
+      value: facts?.easeOfBusiness ?? '—',
+    },
+    { label: 'Language', value: facts?.language ?? '—' },
+    { label: 'Currency', value: facts?.currency ?? '—' },
+  ];
+
+  return (
+    <View style={[styles.qfPanel, compact ? styles.qfPanelCompact : null]}>
+      {/* TODO: Mini-map (Mapbox dark-v11, country polygon filled with MVI color).
+          Deferred — Quick Facts data display is the priority for this step. */}
+      <View
+        style={[
+          styles.miniMapPlaceholder,
+          { borderColor: mviScoreColor(overall) },
+        ]}
+      >
+        <View
+          style={[styles.miniMapSwatch, { backgroundColor: mviScoreColor(overall) }]}
+        />
+        <Text style={styles.miniMapLabel}>MAP PREVIEW</Text>
+      </View>
+
+      <Text style={styles.qfHeader}>QUICK FACTS</Text>
+      <View style={[styles.qfRows, compact ? styles.qfRowsCompact : null]}>
+        {rows.map((row) => (
+          <View
+            key={row.label}
+            style={[styles.qfRow, compact ? styles.qfRowCompact : null]}
+          >
+            <Text style={styles.qfLabel}>{row.label}</Text>
+            <Text
+              style={[
+                styles.qfValue,
+                row.value === '—' ? styles.qfValueMuted : null,
+              ]}
+            >
+              {row.value}
+            </Text>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
 }
 
 function sourcesForDimension(
@@ -274,6 +366,14 @@ export default function GeographyDetailScreen() {
                 </View>
               </View>
 
+              {!isWide ? (
+                <QuickFactsPanel
+                  facts={data.quickFacts}
+                  overall={overall}
+                  compact
+                />
+              ) : null}
+
               <View style={styles.dimStack}>
                 {MVI_DIMENSION_DISPLAY.map((dim) => {
                   const score = data.mvi?.dimensions?.[dim.key] ?? null;
@@ -323,6 +423,12 @@ export default function GeographyDetailScreen() {
                 </Pressable>
               </View>
             </View>
+
+            {isWide ? (
+              <View style={styles.sideCol}>
+                <QuickFactsPanel facts={data.quickFacts} overall={overall} />
+              </View>
+            ) : null}
           </View>
         ) : null}
       </ScrollView>
@@ -396,6 +502,88 @@ const styles = StyleSheet.create({
   mainColWide: {
     flex: 1,
     maxWidth: 720,
+  },
+  sideCol: {
+    width: 300,
+    flexShrink: 0,
+  },
+  qfPanel: {
+    backgroundColor: '#0e0e16',
+    borderWidth: 1,
+    borderColor: '#1c1c2a',
+    borderRadius: 12,
+    padding: 16,
+    gap: 14,
+  },
+  qfPanelCompact: {
+    marginTop: 4,
+  },
+  miniMapPlaceholder: {
+    height: 120,
+    borderRadius: 8,
+    borderWidth: 1,
+    backgroundColor: '#12121c',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    overflow: 'hidden',
+  },
+  miniMapSwatch: {
+    width: 56,
+    height: 36,
+    borderRadius: 6,
+    opacity: 0.85,
+  },
+  miniMapLabel: {
+    color: 'rgba(255,255,255,0.35)',
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 1.2,
+    fontFamily: 'monospace',
+  },
+  qfHeader: {
+    color: 'rgba(255,255,255,0.45)',
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 1.4,
+    fontFamily: 'monospace',
+  },
+  qfRows: {
+    gap: 10,
+  },
+  qfRowsCompact: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  qfRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 12,
+  },
+  qfRowCompact: {
+    width: '48%',
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    backgroundColor: '#12121c',
+    borderRadius: 8,
+    padding: 10,
+    gap: 4,
+  },
+  qfLabel: {
+    color: 'rgba(255,255,255,0.45)',
+    fontSize: 12,
+  },
+  qfValue: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
+    fontFamily: 'monospace',
+    textAlign: 'right',
+  },
+  qfValueMuted: {
+    color: 'rgba(255,255,255,0.35)',
   },
   region: {
     color: 'rgba(255,255,255,0.45)',
