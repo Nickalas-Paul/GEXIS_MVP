@@ -7,6 +7,8 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Linking,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -22,6 +24,7 @@ import {
   COMPARE_MAX,
   useCompareSelection,
 } from '@/hooks/useCompareSelection';
+import { getApiUrl } from '@/services/api';
 import {
   getGeographyDetail,
   getGeographyTrends,
@@ -30,6 +33,27 @@ import {
   type QuickFacts,
   type TrendData,
 } from '@/services/geographies';
+
+function openExportUrl(url: string): void {
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    window.open(url, '_blank');
+    return;
+  }
+  void Linking.openURL(url);
+}
+
+function geographyExportUrl(
+  idOrIso: string,
+  format: 'pdf' | 'csv',
+  vertical: string
+): string {
+  const base = getApiUrl().replace(/\/$/, '');
+  const qs =
+    vertical && vertical !== 'all'
+      ? `?vertical=${encodeURIComponent(vertical)}`
+      : '';
+  return `${base}/api/exports/geography/${encodeURIComponent(idOrIso)}/${format}${qs}`;
+}
 
 function confidenceColor(c: string | null | undefined): string {
   if (c === 'high') return '#3ecf8e';
@@ -283,6 +307,7 @@ export default function GeographyDetailScreen() {
   const [trendsLoading, setTrendsLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
 
   useEffect(() => {
     if (!geographyId) {
@@ -497,15 +522,40 @@ export default function GeographyDetailScreen() {
                     </Text>
                   </Pressable>
                 ) : null}
-                <Pressable
-                  style={[styles.actionBtn, styles.actionBtnGhost]}
-                  onPress={() => {
-                    // Wired in Step 9
-                    if (__DEV__) console.log('[detail] Export placeholder', data.isoCode);
-                  }}
-                >
-                  <Text style={styles.actionTextGhost}>Export</Text>
-                </Pressable>
+                <View style={styles.exportWrap}>
+                  <Pressable
+                    style={[styles.actionBtn, styles.actionBtnGhost]}
+                    onPress={() => setExportMenuOpen((o) => !o)}
+                  >
+                    <Text style={styles.actionTextGhost}>
+                      Export{exportMenuOpen ? ' ▴' : ' ▾'}
+                    </Text>
+                  </Pressable>
+                  {exportMenuOpen ? (
+                    <View style={styles.exportMenu}>
+                      <Pressable
+                        style={styles.exportMenuItem}
+                        onPress={() => {
+                          const id = data.isoCode ?? data.id;
+                          openExportUrl(geographyExportUrl(id, 'pdf', vertical));
+                          setExportMenuOpen(false);
+                        }}
+                      >
+                        <Text style={styles.exportMenuText}>Download PDF</Text>
+                      </Pressable>
+                      <Pressable
+                        style={styles.exportMenuItem}
+                        onPress={() => {
+                          const id = data.isoCode ?? data.id;
+                          openExportUrl(geographyExportUrl(id, 'csv', vertical));
+                          setExportMenuOpen(false);
+                        }}
+                      >
+                        <Text style={styles.exportMenuText}>Download CSV</Text>
+                      </Pressable>
+                    </View>
+                  ) : null}
+                </View>
                 <Pressable
                   style={[styles.actionBtn, styles.actionBtnGhost]}
                   onPress={() =>
@@ -869,6 +919,30 @@ const styles = StyleSheet.create({
   actionTextGhost: {
     color: 'rgba(255,255,255,0.7)',
     fontSize: 14,
+    fontWeight: '600',
+  },
+  exportWrap: {
+    position: 'relative',
+    zIndex: 5,
+  },
+  exportMenu: {
+    marginTop: 6,
+    borderWidth: 1,
+    borderColor: '#2a2a3e',
+    borderRadius: 8,
+    backgroundColor: '#14141f',
+    overflow: 'hidden',
+    minWidth: 160,
+  },
+  exportMenuItem: {
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1c1c2a',
+  },
+  exportMenuText: {
+    color: 'rgba(255,255,255,0.85)',
+    fontSize: 13,
     fontWeight: '600',
   },
 });

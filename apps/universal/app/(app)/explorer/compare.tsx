@@ -3,6 +3,8 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Linking,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -17,6 +19,7 @@ import {
   useCompareSelection,
 } from '@/hooks/useCompareSelection';
 import { mviScoreColor } from '@/lib/mviColors';
+import { getApiUrl } from '@/services/api';
 import {
   getGeographyDetail,
   getGeographyTrends,
@@ -24,6 +27,14 @@ import {
   type GeographyDetail,
   type QuickFacts,
 } from '@/services/geographies';
+
+function openExportUrl(url: string): void {
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    window.open(url, '_blank');
+    return;
+  }
+  void Linking.openURL(url);
+}
 
 type ColumnResult =
   | {
@@ -441,10 +452,15 @@ export default function CompareMarketsScreen() {
             <Pressable
               style={styles.ghostBtn}
               onPress={() => {
-                if (__DEV__) console.log('[compare] Export stub');
+                if (isos.length === 0) return;
+                const base = getApiUrl().replace(/\/$/, '');
+                const url = `${base}/api/exports/compare/csv?compare=${encodeURIComponent(
+                  isos.join(',')
+                )}`;
+                openExportUrl(url);
               }}
             >
-              <Text style={styles.ghostBtnText}>Export comparison</Text>
+              <Text style={styles.ghostBtnText}>Export CSV</Text>
             </Pressable>
             <Pressable
               style={styles.dangerBtn}
