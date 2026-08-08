@@ -11,6 +11,7 @@ export type GeographyFeatureProperties = {
   regulatoryEase: number | null;
   infrastructure: number | null;
   competitorSaturation: number | null;
+  trajectory: number | null;
   confidence: 'high' | 'medium' | 'low' | null;
   population: number | null;
 };
@@ -51,6 +52,7 @@ export type GeographyListItem = {
       regulatoryEase: number | null;
       infrastructure: number | null;
       competitorSaturation: number | null;
+      trajectory: number | null;
     } | null;
     confidence: 'high' | 'medium' | 'low' | null;
     dataFreshness: string | null;
@@ -173,6 +175,7 @@ export type GeographyDetail = {
       regulatoryEase: number | null;
       infrastructure: number | null;
       competitorSaturation: number | null;
+      trajectory: number | null;
     } | null;
     confidence: 'high' | 'medium' | 'low' | null;
     dataFreshness: string | null;

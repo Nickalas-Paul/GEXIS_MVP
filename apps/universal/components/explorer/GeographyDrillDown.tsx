@@ -29,6 +29,7 @@ const DIMENSIONS: Array<{
   { key: 'regulatoryEase', label: 'Regulatory Ease', color: '#9b7bde' },
   { key: 'infrastructure', label: 'Infrastructure', color: '#2eb8a6' },
   { key: 'competitorSaturation', label: 'Competitor Saturation', color: '#d96b6b' },
+  { key: 'trajectory', label: 'Trajectory', color: '#6b9bd1' },
 ];
 
 function confidenceColor(c: string | null | undefined): string {

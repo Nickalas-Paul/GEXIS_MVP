@@ -182,6 +182,8 @@ export default function Map({
           props.competitorSaturation == null
             ? null
             : Number(props.competitorSaturation),
+        trajectory:
+          props.trajectory == null ? null : Number(props.trajectory),
       };
       const centroid =
         geometryCentroid(feature.geometry) ??

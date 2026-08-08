@@ -69,6 +69,7 @@ router.get('/dimensions', async (_req: Request, res: Response) => {
         key: dim.key,
         label: dim.label,
         description: dim.description,
+        isComposite: Boolean(dim.isComposite),
         indicators,
         totalCountriesCovered,
       };

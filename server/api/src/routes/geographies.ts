@@ -19,6 +19,10 @@ import {
 import { apiError, apiResponse } from '../utils/response';
 
 const DIMENSION_KEYS: DimensionKey[] = MVI_DIMENSIONS.map((d) => d.key);
+/** Base dimensions that have trend vectors (excludes composite Trajectory). */
+const TREND_DIMENSION_KEYS: DimensionKey[] = MVI_DIMENSIONS.filter(
+  (d) => !d.isComposite
+).map((d) => d.key);
 
 type TrendHorizon = '2yr' | '5yr';
 
@@ -44,6 +48,7 @@ interface MviDimensions {
   regulatoryEase: number | null;
   infrastructure: number | null;
   competitorSaturation: number | null;
+  trajectory: number | null;
 }
 
 interface DbGeoRow {
@@ -587,6 +592,7 @@ router.get('/geojson', async (req: Request, res: Response) => {
           regulatoryEase: overallDims.regulatoryEase ?? null,
           infrastructure: overallDims.infrastructure ?? null,
           competitorSaturation: overallDims.competitorSaturation ?? null,
+          trajectory: overallDims.trajectory ?? null,
           confidence: row.confidence,
           population: row.population != null ? Number(row.population) : null,
           vertical,
@@ -623,7 +629,23 @@ router.post('/filter', async (req: Request, res: Response) => {
   try {
     const body = req.body ?? {};
     const vertical = parseVertical(body.vertical);
-    const filters = (body.filters ?? {}) as Record<string, unknown>;
+    const nestedFilters =
+      body.filters && typeof body.filters === 'object'
+        ? (body.filters as Record<string, unknown>)
+        : {};
+    // Accept nested `filters` or top-level min*/max* keys (verify / clients).
+    const filters: Record<string, unknown> = { ...nestedFilters };
+    for (const [key, value] of Object.entries(body)) {
+      if (key === 'filters' || key === 'vertical' || key === 'sort' || key === 'limit') {
+        continue;
+      }
+      if (
+        (key.startsWith('min') || key.startsWith('max')) &&
+        filters[key] === undefined
+      ) {
+        filters[key] = value;
+      }
+    }
     const sort = (body.sort ?? { field: 'overall', direction: 'desc' }) as {
       field?: string;
       direction?: string;
@@ -670,6 +692,10 @@ router.post('/filter', async (req: Request, res: Response) => {
       filters.minTaxEnvironment,
       `(m.dimensions->>'taxEnvironment')::numeric >= ?`
     );
+    addNumFilter(
+      filters.minTrajectory,
+      `(m.dimensions->>'trajectory')::numeric >= ?`
+    );
 
     // Raw corp tax rate (percent) — latest non-null tax_foundation value
     if (
@@ -708,6 +734,7 @@ router.post('/filter', async (req: Request, res: Response) => {
       'regulatoryease',
       'infrastructure',
       'competitorsaturation',
+      'trajectory',
     ]);
 
     // Fetch without relying on stored overall for final ranking when vertical weights apply.
@@ -721,6 +748,7 @@ router.post('/filter', async (req: Request, res: Response) => {
         regulatoryease: 'regulatoryEase',
         infrastructure: 'infrastructure',
         competitorsaturation: 'competitorSaturation',
+        trajectory: 'trajectory',
       };
       const dimKey = keyMap[sortField.replace(/_/g, '')];
       orderBy = `(m.dimensions->>'${dimKey}')::numeric ${sortDir} NULLS LAST, g.name ASC`;
@@ -842,7 +870,7 @@ router.get('/:id/trends', async (req: Request, res: Response) => {
 
     const byDim = new Map(trendResult.rows.map((r) => [r.dimension, r]));
     const trends: Record<string, unknown> = {};
-    for (const key of DIMENSION_KEYS) {
+    for (const key of TREND_DIMENSION_KEYS) {
       const row = byDim.get(key);
       if (!row) {
         trends[key] = null;
