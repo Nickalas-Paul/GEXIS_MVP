@@ -29,7 +29,7 @@ from config import LOGS_DIR
 from db import get_cursor, load_geography_iso_map, upsert_indicator
 
 SOURCE = "oecd"
-DATE_RANGE = "2018:2024"
+DATE_RANGE = "2000:2024"
 WB_BASE = "https://api.worldbank.org/v2/country/all/indicator/{code}"
 
 # OECD members + accession partners commonly included in EAG-style analyses
