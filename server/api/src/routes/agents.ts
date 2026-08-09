@@ -1,10 +1,12 @@
 /**
- * Agent profile CRUD & onboarding (Phase 7).
+ * Agent profile CRUD, onboarding, and reviews (Phase 7).
  *
  * GET  /api/agents/me
  * GET  /api/agents/:id
  * POST /api/agents
  * PUT  /api/agents/:id
+ * POST /api/agents/:agentId/reviews
+ * GET  /api/agents/:agentId/reviews
  */
 
 import {
@@ -12,6 +14,7 @@ import {
   RESPONSE_TIME_KEYS,
   type Agent,
   type AgentCategory,
+  type AgentReview,
   type ResponseTime,
 } from '@gexis/gexis-core';
 import { Router, Request, Response } from 'express';
@@ -534,6 +537,180 @@ router.put('/:id', requireAuth, async (req: Request, res: Response) => {
     res.json(apiResponse(toAgent(result.rows[0])));
   } catch (err) {
     console.error('[agents] update error:', err);
+    res.status(500).json(apiError('Internal server error'));
+  }
+});
+
+const REVIEW_SELECT = `
+  id, agent_id, user_id, rating, review_text, engagement_type, created_at
+`;
+
+type ReviewRow = {
+  id: string;
+  agent_id: string;
+  user_id: string;
+  rating: string | number;
+  review_text: string | null;
+  engagement_type: string | null;
+  created_at: Date;
+};
+
+function toReview(row: ReviewRow): AgentReview {
+  return {
+    id: row.id,
+    agentId: row.agent_id,
+    userId: row.user_id,
+    rating: Number(row.rating),
+    reviewText: row.review_text,
+    engagementType: row.engagement_type,
+    createdAt:
+      row.created_at instanceof Date
+        ? row.created_at.toISOString()
+        : String(row.created_at),
+  };
+}
+
+/** POST /api/agents/:agentId/reviews — submit review after completed engagement */
+router.post(
+  '/:agentId/reviews',
+  requireAuth,
+  async (req: Request, res: Response) => {
+    try {
+      const agentId = String(req.params.agentId ?? '').trim();
+      if (!UUID_RE.test(agentId)) {
+        res.status(400).json(apiError('agentId must be a valid UUID'));
+        return;
+      }
+
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const ratingRaw = body.rating;
+      const rating =
+        typeof ratingRaw === 'number'
+          ? ratingRaw
+          : typeof ratingRaw === 'string'
+            ? Number(ratingRaw)
+            : NaN;
+      if (!Number.isFinite(rating) || rating < 1 || rating > 5) {
+        res.status(400).json(apiError('rating must be a number between 1 and 5'));
+        return;
+      }
+
+      let reviewText: string | null = null;
+      if (body.reviewText !== undefined && body.reviewText !== null) {
+        if (typeof body.reviewText !== 'string') {
+          res.status(400).json(apiError('reviewText must be a string'));
+          return;
+        }
+        const trimmed = body.reviewText.trim();
+        reviewText = trimmed || null;
+      }
+
+      let engagementType: string | null = null;
+      if (body.engagementType !== undefined && body.engagementType !== null) {
+        if (typeof body.engagementType !== 'string') {
+          res.status(400).json(apiError('engagementType must be a string'));
+          return;
+        }
+        const trimmed = body.engagementType.trim();
+        if (trimmed.length > 50) {
+          res
+            .status(400)
+            .json(apiError('engagementType must be at most 50 characters'));
+          return;
+        }
+        engagementType = trimmed || null;
+      }
+
+      const agentExists = await pool.query<{ id: string }>(
+        `SELECT id FROM agents WHERE id = $1`,
+        [agentId]
+      );
+      if (agentExists.rowCount === 0) {
+        res.status(404).json(apiError('agent_not_found'));
+        return;
+      }
+
+      const completed = await pool.query<{ id: string }>(
+        `SELECT id FROM agent_engagements
+         WHERE agent_id = $1 AND user_id = $2 AND status = 'completed'`,
+        [agentId, req.user!.id]
+      );
+      if ((completed.rowCount ?? 0) === 0) {
+        res.status(403).json({
+          error: 'no_completed_engagement',
+          message: 'You can only review agents after a completed engagement',
+        });
+        return;
+      }
+
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const inserted = await client.query<ReviewRow>(
+          `INSERT INTO agent_reviews (
+             agent_id, user_id, rating, review_text, engagement_type
+           ) VALUES ($1, $2, $3, $4, $5)
+           RETURNING ${REVIEW_SELECT}`,
+          [agentId, req.user!.id, rating, reviewText, engagementType]
+        );
+
+        await client.query(
+          `UPDATE agents SET
+             rating = (SELECT ROUND(AVG(rating), 2) FROM agent_reviews WHERE agent_id = $1),
+             updated_at = NOW()
+           WHERE id = $1`,
+          [agentId]
+        );
+
+        await client.query('COMMIT');
+        res.status(201).json(apiResponse(toReview(inserted.rows[0])));
+      } catch (err: unknown) {
+        await client.query('ROLLBACK');
+        const pgErr = err as { code?: string };
+        if (pgErr.code === '23505') {
+          res.status(409).json(apiError('review_exists'));
+          return;
+        }
+        throw err;
+      } finally {
+        client.release();
+      }
+    } catch (err) {
+      console.error('[agents] create review error:', err);
+      res.status(500).json(apiError('Internal server error'));
+    }
+  }
+);
+
+/** GET /api/agents/:agentId/reviews — public review list */
+router.get('/:agentId/reviews', async (req: Request, res: Response) => {
+  try {
+    const agentId = String(req.params.agentId ?? '').trim();
+    if (!UUID_RE.test(agentId)) {
+      res.status(400).json(apiError('agentId must be a valid UUID'));
+      return;
+    }
+
+    const agentExists = await pool.query<{ id: string }>(
+      `SELECT id FROM agents WHERE id = $1`,
+      [agentId]
+    );
+    if (agentExists.rowCount === 0) {
+      res.status(404).json(apiError('agent_not_found'));
+      return;
+    }
+
+    const result = await pool.query<ReviewRow>(
+      `SELECT ${REVIEW_SELECT}
+       FROM agent_reviews
+       WHERE agent_id = $1
+       ORDER BY created_at DESC`,
+      [agentId]
+    );
+
+    res.json(apiResponse(result.rows.map(toReview)));
+  } catch (err) {
+    console.error('[agents] list reviews error:', err);
     res.status(500).json(apiError('Internal server error'));
   }
 });
