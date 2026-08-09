@@ -11,6 +11,9 @@ Source names must match raw_indicators.source values from the ingestion workers.
 DIMENSIONS = {
     "marketSizeAndGrowth": {
         "label": "Market Size & Growth",
+        # Note: imf_gdp_nominal is available in raw_indicators (ingest_imf.py) but
+        # excluded from scoring because NY.GDP.MKTP.CD from World Bank has better
+        # coverage and the same underlying GDP-current-USD concept.
         "indicators": [
             {
                 "source": "world_bank",
@@ -131,6 +134,9 @@ DIMENSIONS = {
     },
     "regulatoryEase": {
         "label": "Regulatory Ease",
+        # Note: heritage_financial_freedom is available in raw_indicators
+        # (ingest_heritage.py) but excluded because it overlaps with WGI
+        # Government Effectiveness (GE.PER.RNK).
         "indicators": [
             {
                 "source": "world_bank",

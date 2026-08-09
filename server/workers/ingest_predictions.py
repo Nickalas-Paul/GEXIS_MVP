@@ -22,6 +22,7 @@ import requests
 from config import LOGS_DIR
 from country_aliases import NAME_TO_ISO
 from db import get_cursor, load_geography_iso_map
+from notify_signals import trigger_signal_notifications
 
 SOURCE = "polymarket"
 SEED_SOURCE = "seed"
@@ -766,6 +767,12 @@ if __name__ == "__main__":
     configure_logging()
     try:
         ingest()
+        try:
+            trigger_signal_notifications()
+        except Exception:
+            logger.exception(
+                "Signal notification hook failed (ingestion already succeeded)"
+            )
         logger.info("ingest_predictions completed successfully")
     except Exception:
         logger.exception("ingest_predictions failed")

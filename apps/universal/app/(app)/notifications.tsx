@@ -38,6 +38,14 @@ function relativeTime(iso: string): string {
 
 function notificationHref(n: AppNotification): string {
   const meta = n.metadata ?? {};
+  if (n.type === 'market_event') {
+    const geographyId =
+      typeof meta.geographyId === 'string' ? meta.geographyId.trim() : '';
+    if (geographyId) {
+      return `/explorer/${encodeURIComponent(geographyId)}`;
+    }
+    return '/explorer';
+  }
   if (
     n.type === 'engagement_requested' ||
     n.type === 'engagement_accepted' ||
@@ -102,7 +110,7 @@ export default function NotificationsScreen() {
         // still navigate
       }
     }
-    router.push(notificationHref(n) as '/engagements');
+    router.push(notificationHref(n) as never);
   };
 
   return (

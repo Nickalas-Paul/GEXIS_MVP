@@ -4,6 +4,7 @@
 
 import { Router, Request, Response } from 'express';
 import { pool } from '../config/database';
+import { createNotification } from '../services/notifications';
 import { apiError, apiResponse, toCamelCase } from '../utils/response';
 
 const router = Router();
@@ -142,6 +143,112 @@ router.get('/summary', async (_req: Request, res: Response) => {
     });
   } catch (err) {
     console.error('[signals] summary error:', err);
+    res.status(500).json(apiError('Internal server error'));
+  }
+});
+
+/**
+ * POST /api/signals/process-notifications
+ * Internal hook: notify verified agents covering geographies with recent signals.
+ */
+router.post('/process-notifications', async (_req: Request, res: Response) => {
+  try {
+    const signalsResult = await pool.query<{
+      id: string;
+      geography_id: string;
+      signal_type: string;
+      direction: string;
+      title: string;
+      country_name: string | null;
+    }>(
+      `
+      SELECT
+        ms.id,
+        ms.geography_id,
+        ms.signal_type,
+        ms.direction,
+        ms.title,
+        g.name AS country_name
+      FROM market_signals ms
+      INNER JOIN geographies g ON g.id = ms.geography_id
+      WHERE ms.resolved = false
+        AND ms.created_at > NOW() - INTERVAL '24 hours'
+        AND ms.geography_id IS NOT NULL
+      ORDER BY ms.created_at DESC
+      `
+    );
+
+    const signals = signalsResult.rows;
+    let notificationsCreated = 0;
+
+    for (const signal of signals) {
+      const agentsResult = await pool.query<{ user_id: string }>(
+        `
+        SELECT DISTINCT user_id
+        FROM agents
+        WHERE verified = true
+          AND geography_ids IS NOT NULL
+          AND $1::uuid = ANY(geography_ids)
+        `,
+        [signal.geography_id]
+      );
+
+      const countryName = signal.country_name?.trim() || 'your coverage area';
+      const message =
+        signal.title.length > 200
+          ? `${signal.title.slice(0, 197)}...`
+          : signal.title;
+
+      for (const agent of agentsResult.rows) {
+        const existing = await pool.query(
+          `
+          SELECT 1
+          FROM notifications
+          WHERE user_id = $1
+            AND type = 'market_event'
+            AND metadata->>'signalId' = $2
+          LIMIT 1
+          `,
+          [agent.user_id, signal.id]
+        );
+        if (existing.rows.length > 0) {
+          continue;
+        }
+
+        try {
+          await createNotification({
+            userId: agent.user_id,
+            type: 'market_event',
+            title: `Market event in ${countryName}`,
+            message,
+            metadata: {
+              signalId: signal.id,
+              geographyId: signal.geography_id,
+              signalType: signal.signal_type,
+              direction: signal.direction,
+            },
+          });
+          notificationsCreated += 1;
+        } catch (err) {
+          console.error(
+            '[signals] createNotification failed:',
+            signal.id,
+            agent.user_id,
+            err
+          );
+        }
+      }
+    }
+
+    res.json({
+      success: true,
+      ...apiResponse({
+        processed: signals.length,
+        notificationsCreated,
+      }),
+    });
+  } catch (err) {
+    console.error('[signals] process-notifications error:', err);
     res.status(500).json(apiError('Internal server error'));
   }
 });

@@ -7,14 +7,13 @@ timed out or returned 404 from this environment. Fallback (documented):
 
   World Bank WDI education indicators for OECD member countries only:
   - SE.TER.CUAT.BA.ZS  -> oecd_tertiary_attainment (bachelor+ attainment, % 25+)
-  - SE.TER.GRAD.FE.SI.ZS is female-STEM only and is NOT used as overall STEM share.
 
-  Overall STEM graduate share is not reliably available via a stable public API
-  in this step; oecd_stem_share rows are written as NULL for OECD members so the
-  scoring engine can apply confidence penalties explicitly.
+  STEM graduate share was planned but the source was unreliable — we do not
+  insert oecd_stem_share placeholders. Prefer the global `education` + `ilo`
+  workers for Talent Density scoring (Phase 7.5).
 
-Source label remains `oecd` for the talent-density dimension contract; data_url
-records the actual World Bank endpoint used for the tertiary proxy.
+Source label remains `oecd` for legacy rows; superseded for scoring by
+`education` / `ilo` sources in scoring_config.py.
 """
 
 from __future__ import annotations
@@ -100,8 +99,11 @@ def fetch_wb(code: str) -> tuple[list[dict], str]:
 
 def ingest() -> None:
     try_oecd_sdmx()
+    # STEM graduate share was planned (oecd_stem_share) but the OECD SDMX source
+    # was unreliable / incomplete — we no longer insert NULL placeholder rows.
     logger.info(
-        "Using World Bank education proxy for %s OECD ISO codes; STEM share stored as NULL",
+        "Using World Bank education proxy for %s OECD ISO codes "
+        "(legacy oecd source; prefer education worker for global coverage)",
         len(OECD_ISO3),
     )
 
@@ -137,22 +139,6 @@ def ingest() -> None:
             )
             stored += 1
         time.sleep(0.2)
-
-        # Explicit NULL STEM rows for latest year present in tertiary data (or 2022 default)
-        stem_year = 2022
-        for iso in covered:
-            upsert_indicator(
-                cursor,
-                geography_id=iso_map[iso],
-                source=SOURCE,
-                indicator_code="oecd_stem_share",
-                indicator_name="STEM graduates (% of all graduates) — unavailable this step",
-                value=None,
-                unit="percent",
-                year=stem_year,
-                data_url=None,
-            )
-            stored += 1
 
     logger.info(
         "Done stored=%s skipped=%s coverage_gap_non_oecd=%s countries",

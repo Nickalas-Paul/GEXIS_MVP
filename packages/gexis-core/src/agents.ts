@@ -145,6 +145,7 @@ export const NOTIFICATION_TYPES = [
   'engagement_declined',
   'engagement_active',
   'engagement_completed',
+  'market_event',
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
