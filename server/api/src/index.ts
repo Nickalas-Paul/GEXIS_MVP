@@ -12,6 +12,7 @@ import exportRoutes from './routes/exports';
 import geographyRoutes from './routes/geographies';
 import mviRoutes from './routes/mvi';
 import savedSearchRoutes from './routes/savedSearches';
+import devRoutes from './routes/dev';
 
 const app = express();
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3001;
@@ -48,6 +49,10 @@ app.use('/api/geographies', geographyRoutes);
 app.use('/api/mvi', mviRoutes);
 app.use('/api/exports', exportRoutes);
 app.use('/api/saved-searches', savedSearchRoutes);
+
+if (process.env.NODE_ENV !== 'production') {
+  app.use('/api/dev', devRoutes);
+}
 
 async function start(): Promise<void> {
   const dbOk = await verifyDatabaseConnection();

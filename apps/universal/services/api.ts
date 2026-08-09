@@ -149,3 +149,20 @@ export async function logout(token: string): Promise<{ success: boolean }> {
 export async function getMe(accessToken: string): Promise<{ user: AuthUser }> {
   return request<{ user: AuthUser }>('/api/auth/me', { method: 'GET' }, accessToken);
 }
+
+export type SubscriptionTierName = 'free' | 'pro' | 'marketplace';
+
+/** Dev-only: update the current user's subscription_tier (non-production API). */
+export async function setDevTier(
+  accessToken: string,
+  tier: SubscriptionTierName
+): Promise<{ user: AuthUser }> {
+  return request<{ user: AuthUser }>(
+    '/api/dev/set-tier',
+    {
+      method: 'POST',
+      body: JSON.stringify({ tier }),
+    },
+    accessToken
+  );
+}
