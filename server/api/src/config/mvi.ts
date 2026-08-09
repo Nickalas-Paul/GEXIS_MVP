@@ -7,6 +7,12 @@
  * Sync manually when either side changes.
  */
 
+import {
+  INDUSTRY_VERTICAL_KEYS,
+  INDUSTRY_VERTICAL_LABELS,
+  type IndustryVerticalKey,
+} from '@gexis/gexis-core';
+
 export const MVI_SCORING_VERSION = '0.1.0';
 
 export type DimensionKey =
@@ -227,14 +233,15 @@ export const STORED_MVI_VERTICAL = 'all_industries';
 export type DimensionWeights = Record<DimensionKey, number>;
 
 export interface IndustryVertical {
-  key: string;
+  key: IndustryVerticalKey;
   label: string;
   weights: DimensionWeights;
 }
 
 /**
  * Industry vertical weight profiles for on-the-fly overall MVI recomputation.
- * COUPLING: keep in sync with server/workers/scoring_config.py INDUSTRY_VERTICALS.
+ * COUPLING: TypeScript vertical keys/labels now live in @gexis/gexis-core (verticals.ts).
+ * Weights remain here. Keep in sync with server/workers/scoring_config.py INDUSTRY_VERTICALS.
  * Dimension scores are stored once (equal-weight); overall is reweighted at query time.
  *
  * Trajectory multipliers (relative to avg of the original six):
@@ -255,7 +262,7 @@ function withTrajectory(
 export const INDUSTRY_VERTICALS: IndustryVertical[] = [
   {
     key: 'all',
-    label: 'All Industries',
+    label: INDUSTRY_VERTICAL_LABELS['all'],
     weights: withTrajectory(
       {
         marketSizeAndGrowth: 0.167,
@@ -270,7 +277,7 @@ export const INDUSTRY_VERTICALS: IndustryVertical[] = [
   },
   {
     key: 'tech_saas',
-    label: 'Technology & SaaS',
+    label: INDUSTRY_VERTICAL_LABELS['tech_saas'],
     weights: withTrajectory(
       {
         marketSizeAndGrowth: 0.15,
@@ -285,7 +292,7 @@ export const INDUSTRY_VERTICALS: IndustryVertical[] = [
   },
   {
     key: 'financial',
-    label: 'Financial Services',
+    label: INDUSTRY_VERTICAL_LABELS['financial'],
     weights: withTrajectory(
       {
         marketSizeAndGrowth: 0.2,
@@ -300,7 +307,7 @@ export const INDUSTRY_VERTICALS: IndustryVertical[] = [
   },
   {
     key: 'manufacturing',
-    label: 'Manufacturing',
+    label: INDUSTRY_VERTICAL_LABELS['manufacturing'],
     weights: withTrajectory(
       {
         marketSizeAndGrowth: 0.15,
@@ -315,7 +322,7 @@ export const INDUSTRY_VERTICALS: IndustryVertical[] = [
   },
   {
     key: 'healthcare',
-    label: 'Healthcare & Life Sciences',
+    label: INDUSTRY_VERTICAL_LABELS['healthcare'],
     weights: withTrajectory(
       {
         marketSizeAndGrowth: 0.2,
@@ -330,7 +337,7 @@ export const INDUSTRY_VERTICALS: IndustryVertical[] = [
   },
   {
     key: 'ecommerce',
-    label: 'E-Commerce & Retail',
+    label: INDUSTRY_VERTICAL_LABELS['ecommerce'],
     weights: withTrajectory(
       {
         marketSizeAndGrowth: 0.25,
@@ -345,7 +352,7 @@ export const INDUSTRY_VERTICALS: IndustryVertical[] = [
   },
   {
     key: 'energy',
-    label: 'Energy & Renewables',
+    label: INDUSTRY_VERTICAL_LABELS['energy'],
     weights: withTrajectory(
       {
         marketSizeAndGrowth: 0.15,
@@ -360,7 +367,7 @@ export const INDUSTRY_VERTICALS: IndustryVertical[] = [
   },
   {
     key: 'professional',
-    label: 'Professional Services',
+    label: INDUSTRY_VERTICAL_LABELS['professional'],
     weights: withTrajectory(
       {
         marketSizeAndGrowth: 0.15,
@@ -375,7 +382,7 @@ export const INDUSTRY_VERTICALS: IndustryVertical[] = [
   },
   {
     key: 'logistics',
-    label: 'Logistics & Supply Chain',
+    label: INDUSTRY_VERTICAL_LABELS['logistics'],
     weights: withTrajectory(
       {
         marketSizeAndGrowth: 0.2,
@@ -390,7 +397,7 @@ export const INDUSTRY_VERTICALS: IndustryVertical[] = [
   },
   {
     key: 'telecom',
-    label: 'Telecommunications',
+    label: INDUSTRY_VERTICAL_LABELS['telecom'],
     weights: withTrajectory(
       {
         marketSizeAndGrowth: 0.2,
@@ -405,7 +412,7 @@ export const INDUSTRY_VERTICALS: IndustryVertical[] = [
   },
   {
     key: 'consumer_goods',
-    label: 'Consumer Goods & CPG',
+    label: INDUSTRY_VERTICAL_LABELS['consumer_goods'],
     weights: withTrajectory(
       {
         marketSizeAndGrowth: 0.25,
@@ -420,9 +427,17 @@ export const INDUSTRY_VERTICALS: IndustryVertical[] = [
   },
 ];
 
+if (INDUSTRY_VERTICALS.length !== INDUSTRY_VERTICAL_KEYS.length) {
+  throw new Error(
+    'INDUSTRY_VERTICALS length must match INDUSTRY_VERTICAL_KEYS from gexis-core'
+  );
+}
+
 export const DEFAULT_VERTICAL = 'all';
 
-const VERTICAL_BY_KEY = new Map(INDUSTRY_VERTICALS.map((v) => [v.key, v]));
+const VERTICAL_BY_KEY = new Map<string, IndustryVertical>(
+  INDUSTRY_VERTICALS.map((v) => [v.key, v])
+);
 
 export function resolveVerticalKey(raw: unknown): string {
   if (typeof raw !== 'string' || !raw.trim()) return DEFAULT_VERTICAL;

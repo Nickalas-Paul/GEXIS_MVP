@@ -69,3 +69,9 @@ export {
   type TierFeatureMap,
   type TimeHorizon,
 } from "./tiers";
+
+// Agents
+export * from "./agents";
+
+// Industry Verticals
+export * from "./verticals";
