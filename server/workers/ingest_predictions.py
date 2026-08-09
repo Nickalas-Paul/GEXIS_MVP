@@ -4,14 +4,15 @@ Ingest prediction-market signals into market_signals (Layer 2).
 Primary source: Polymarket Gamma public-search API
   GET https://gamma-api.polymarket.com/public-search?q={keyword}
 
-Falls back to realistic seed rows (source='seed') if the API is unreachable
-or returns no relevant markets after keyword filtering.
+Uses phrase-based classification, negative keyword filters, and word-boundary
+country extraction. Falls back to source='seed' if the API yields nothing usable.
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import re
 import sys
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
@@ -19,109 +20,204 @@ from typing import Any, Optional
 import requests
 
 from config import LOGS_DIR
-from country_aliases import NAME_TO_ISO, resolve_iso_from_name
-from db import get_cursor, load_geography_iso_map, normalize_country_name
+from country_aliases import NAME_TO_ISO
+from db import get_cursor, load_geography_iso_map
 
 SOURCE = "polymarket"
 SEED_SOURCE = "seed"
 GAMMA_SEARCH_URL = "https://gamma-api.polymarket.com/public-search"
+GAMMA_EVENTS_URL = "https://gamma-api.polymarket.com/events"
 REQUEST_TIMEOUT_SEC = 60
 MAX_RETRIES = 3
-MIN_VOLUME = 10_000.0  # filter out very low-liquidity markets
+MIN_VOLUME = 10_000.0
+ACTIVE_EVENTS_PAGES = 3
+ACTIVE_EVENTS_LIMIT = 100
+
 SEARCH_KEYWORDS = [
-    "tariff",
-    "trade",
-    "sanctions",
-    "regulation",
-    "tax",
-    "GDP",
+    "impose tariff",
+    "trade war",
+    "economic sanctions",
+    "trade deal",
+    "free trade",
     "recession",
-    "election",
-    "currency",
-    "imports",
-    "exports",
-    "embargo",
+    "currency devaluation",
+    "political crisis",
+    "regulatory reform",
+    "import duty",
 ]
 
-# Extra demonyms / abbreviations not covered as full country names.
-EXTRA_ALIASES: dict[str, str] = {
-    "us": "USA",
-    "u.s.": "USA",
-    "u.s": "USA",
-    "american": "USA",
-    "americans": "USA",
-    "chinese": "CHN",
-    "mexican": "MEX",
-    "mexicans": "MEX",
-    "canadian": "CAN",
-    "british": "GBR",
-    "uk": "GBR",
-    "german": "DEU",
-    "french": "FRA",
-    "japanese": "JPN",
-    "indian": "IND",
-    "brazilian": "BRA",
-    "russian": "RUS",
-    "ukrainian": "UKR",
-    "iranian": "IRN",
-    "israeli": "ISR",
-    "saudi": "SAU",
-    "korean": "KOR",
-    "south korean": "KOR",
-    "north korean": "PRK",
-    "taiwanese": "TWN",
-    "australian": "AUS",
-    "vietnamese": "VNM",
-    "turkish": "TUR",
-}
+NEGATIVE_KEYWORDS = [
+    "ai model",
+    "social media",
+    "sports",
+    "entertainment",
+    "celebrity",
+    "movie",
+    "music",
+    "video game",
+    "app store",
+    "streaming",
+    "tennis",
+    "football",
+    "nba",
+    "mlb",
+    "soccer",
+]
 
-EU_ISO3 = ["DEU", "FRA", "ITA", "ESP", "NLD", "BEL", "POL", "SWE"]
-
-# (keywords, signal_type, affected_dimensions, direction)
+# Phrase rules: first matching rule wins (more specific first).
 SIGNAL_RULES: list[tuple[tuple[str, ...], str, list[str], str]] = [
     (
-        ("tariff", "duty", "import tax", "duties"),
+        (
+            "impose tariff",
+            "impose tariffs",
+            "new tariff",
+            "new tariffs",
+            "tariff on",
+            "tariffs on",
+            "import duty",
+            "trade war",
+            "import tax",
+            "tariff increase",
+            "tariff hike",
+            "tariff reduction",
+            "china tariff",
+            "us tariff",
+        ),
         "tariff_risk",
         ["taxEnvironment", "competitorSaturation"],
         "negative",
     ),
     (
-        ("sanction", "embargo", "ban"),
+        (
+            "economic sanction",
+            "economic sanctions",
+            "impose sanctions",
+            "sanction against",
+            "sanctions against",
+            "sanctions on",
+            "trade embargo",
+            "export control",
+            "export controls",
+            "embargo on",
+        ),
         "sanctions",
         ["regulatoryEase", "marketSizeAndGrowth"],
         "negative",
     ),
     (
-        ("trade deal", "trade agreement", "fta", "free trade"),
+        (
+            "trade deal",
+            "trade agreement",
+            "free trade",
+            "trade pact",
+            "fta ",
+            " fta",
+        ),
         "trade_agreement",
         ["marketSizeAndGrowth", "competitorSaturation"],
         "positive",
     ),
     (
-        ("regulation", "regulatory", "compliance", "law"),
+        (
+            "new regulation",
+            "regulatory reform",
+            "deregulation",
+            "compliance requirement",
+            "policy change",
+            "business regulation",
+            "capital gains tax",
+        ),
         "regulatory_change",
         ["regulatoryEase"],
         "neutral",
     ),
     (
-        ("election", "coup", "political", "government", "prime minister", "president"),
+        (
+            "coup",
+            "political crisis",
+            "regime change",
+            "civil unrest",
+            "government collapse",
+            "impeachment",
+            "martial law",
+        ),
         "political_instability",
         ["regulatoryEase", "trajectory"],
         "negative",
     ),
     (
-        ("currency", "devaluation", "exchange rate", "forex"),
+        (
+            "currency devaluation",
+            "currency crisis",
+            "exchange rate collapse",
+            "hyperinflation",
+            "dollarize",
+            "dollarization",
+        ),
         "currency_crisis",
         ["taxEnvironment", "marketSizeAndGrowth"],
         "negative",
     ),
     (
-        ("recession", "gdp", "economic downturn", "rate cut", "fed "),
+        (
+            "recession",
+            "gdp contraction",
+            "interest rate",
+            "central bank",
+            "economic downturn",
+            "fiscal policy",
+            "rate cut",
+            "rate hike",
+            "fed rate",
+        ),
         "economic_policy",
         ["marketSizeAndGrowth", "trajectory"],
         "neutral",
     ),
 ]
+
+EU_TOP5 = ["DEU", "FRA", "ITA", "ESP", "NLD"]
+BRICS = ["BRA", "RUS", "IND", "CHN", "ZAF"]
+
+# Abbreviations with word-boundary patterns → ISO3 (or multi via special keys)
+ABBREV_PATTERNS: list[tuple[re.Pattern[str], list[str]]] = [
+    (re.compile(r"\b(?:u\.?s\.?a\.?|united states(?: of america)?)\b", re.I), ["USA"]),
+    (re.compile(r"\b(?:u\.?k\.?|united kingdom|britain|great britain)\b", re.I), ["GBR"]),
+    (re.compile(r"\b(?:european union|eurozone)\b", re.I), EU_TOP5),
+    (re.compile(r"\beu\b", re.I), EU_TOP5),
+    (re.compile(r"\bbrics\b", re.I), BRICS),
+]
+
+# Demonyms / aliases with word boundaries (not currency-driven).
+DEMONYM_PATTERNS: list[tuple[re.Pattern[str], str]] = [
+    (re.compile(r"\bchinese\b", re.I), "CHN"),
+    (re.compile(r"\bmexican\b", re.I), "MEX"),
+    (re.compile(r"\bcanadian\b", re.I), "CAN"),
+    (re.compile(r"\bjapanese\b", re.I), "JPN"),
+    (re.compile(r"\bindian\b", re.I), "IND"),
+    (re.compile(r"\bbrazilian\b", re.I), "BRA"),
+    (re.compile(r"\brussian\b", re.I), "RUS"),
+    (re.compile(r"\bukrainian\b", re.I), "UKR"),
+    (re.compile(r"\biranian\b", re.I), "IRN"),
+    (re.compile(r"\bisraeli\b", re.I), "ISR"),
+    (re.compile(r"\bsouth korean\b", re.I), "KOR"),
+    (re.compile(r"\bnorth korean\b", re.I), "PRK"),
+    (re.compile(r"\btaiwanese\b", re.I), "TWN"),
+    (re.compile(r"\baustralian\b", re.I), "AUS"),
+    (re.compile(r"\bvietnamese\b", re.I), "VNM"),
+    (re.compile(r"\bturkish\b", re.I), "TUR"),
+    (re.compile(r"\bgerman\b", re.I), "DEU"),
+    (re.compile(r"\bfrench\b", re.I), "FRA"),
+    (re.compile(r"\bcuban\b", re.I), "CUB"),
+    (re.compile(r"\bargentine\b", re.I), "ARG"),
+]
+
+# Currency phrases that should NOT alone create country mappings.
+CURRENCY_NOISE = re.compile(
+    r"\b(?:us dollar|u\.?s\.? dollar|usd|greenback|yen|euro|renminbi|yuan|"
+    r"pound sterling|gbp|jpy|cny|mxn)\b",
+    re.I,
+)
 
 
 def configure_logging() -> None:
@@ -174,7 +270,6 @@ def yes_probability(market: dict[str, Any]) -> Optional[float]:
     prices = parse_outcome_prices(market.get("outcomePrices"))
     if not prices:
         return None
-    # Convention: first outcome is YES / affirmative.
     p = prices[0]
     if p < 0 or p > 1:
         return None
@@ -182,7 +277,7 @@ def yes_probability(market: dict[str, Any]) -> Optional[float]:
 
 
 def market_volume(market: dict[str, Any]) -> float:
-    for key in ("volumeNum", "volume", "volumeClob"):
+    for key in ("volumeNum", "volume", "volumeClob", "liquidityNum", "liquidity"):
         val = market.get(key)
         if val is None:
             continue
@@ -193,41 +288,96 @@ def market_volume(market: dict[str, Any]) -> float:
     return 0.0
 
 
-def classify_signal(text: str) -> Optional[tuple[str, list[str], str]]:
+def has_negative_keyword(text: str) -> bool:
     lower = text.lower()
-    for keywords, signal_type, dims, direction in SIGNAL_RULES:
-        if any(k in lower for k in keywords):
+    return any(term in lower for term in NEGATIVE_KEYWORDS)
+
+
+def classify_signal(text: str) -> Optional[tuple[str, list[str], str]]:
+    if has_negative_keyword(text):
+        return None
+    lower = text.lower()
+    for phrases, signal_type, dims, direction in SIGNAL_RULES:
+        if any(p in lower for p in phrases):
             return signal_type, dims, direction
     return None
 
 
+def _country_name_patterns() -> list[tuple[re.Pattern[str], str]]:
+    """Build word-boundary patterns from NAME_TO_ISO (longer names first)."""
+    patterns: list[tuple[re.Pattern[str], str]] = []
+    for name, iso in sorted(NAME_TO_ISO.items(), key=lambda kv: len(kv[0]), reverse=True):
+        if len(name) < 4 and name not in {"iran", "iraq", "oman", "peru", "cuba", "chad", "fiji", "togo", "mali"}:
+            # Skip very short ambiguous tokens except known short country names.
+            if name not in {"iran", "iraq", "oman", "peru", "cuba", "chad", "fiji", "togo", "mali", "laos"}:
+                continue
+        escaped = re.escape(name)
+        patterns.append((re.compile(rf"\b{escaped}\b", re.I), iso))
+    return patterns
+
+
+_COUNTRY_NAME_PATTERNS = _country_name_patterns()
+
+
 def extract_iso_codes(text: str) -> list[str]:
-    """Map country names / demonyms in text to ISO3 codes."""
-    lower = " " + normalize_country_name(text) + " "
+    """Word-boundary country extraction; ignores currency-only mentions."""
     found: set[str] = set()
 
-    # Prefer longer alias keys first to avoid partial collisions.
-    aliases = {**NAME_TO_ISO, **EXTRA_ALIASES}
-    for alias, iso in sorted(aliases.items(), key=lambda kv: len(kv[0]), reverse=True):
-        token = f" {alias} "
-        if token in lower:
+    for pattern, isos in ABBREV_PATTERNS:
+        if pattern.search(text):
+            found.update(isos)
+
+    for pattern, iso in DEMONYM_PATTERNS:
+        if pattern.search(text):
             found.add(iso)
 
-    # EU / European Union → major economies (multi-row expansion)
-    if " european union " in lower or " eu " in lower or " eurozone " in lower:
-        found.update(EU_ISO3)
-
-    # Direct resolve for whole-title matches via resolve helper
-    for chunk in text.replace("/", " ").replace("-", " ").split(","):
-        iso = resolve_iso_from_name(chunk.strip(), normalize_country_name)
-        if iso:
+    for pattern, iso in _COUNTRY_NAME_PATTERNS:
+        if pattern.search(text):
             found.add(iso)
+
+    # If the only country hits came from currency noise context with no real
+    # country name beyond USD/JPY style mentions, drop USA/JPN false positives.
+    # Example: "US dollar strengthens against yen" — strip unless a non-currency
+    # country phrase also appears.
+    if CURRENCY_NOISE.search(text):
+        # Keep countries only if matched via explicit country/demonym beyond
+        # the "US" inside "US dollar".
+        text_wo_currency = CURRENCY_NOISE.sub(" ", text)
+        kept: set[str] = set()
+        for pattern, isos in ABBREV_PATTERNS:
+            if pattern.search(text_wo_currency):
+                kept.update(isos)
+        for pattern, iso in DEMONYM_PATTERNS:
+            if pattern.search(text_wo_currency):
+                kept.add(iso)
+        for pattern, iso in _COUNTRY_NAME_PATTERNS:
+            if pattern.search(text_wo_currency):
+                kept.add(iso)
+        # Currency-crisis markets about dollarization may only say Argentina + USD —
+        # ARG stays via country name; USA from "US dollar" alone is dropped.
+        found = kept
 
     return sorted(found)
 
 
+def _markets_from_events(events: list[Any]) -> list[dict[str, Any]]:
+    markets: list[dict[str, Any]] = []
+    for event in events:
+        if not isinstance(event, dict):
+            continue
+        event_slug = event.get("slug") or ""
+        event_title = event.get("title") or ""
+        for market in event.get("markets") or []:
+            if not isinstance(market, dict):
+                continue
+            enriched = dict(market)
+            enriched["_event_slug"] = event_slug
+            enriched["_event_title"] = event_title
+            markets.append(enriched)
+    return markets
+
+
 def fetch_search(keyword: str) -> list[dict[str, Any]]:
-    """Return market dicts from Polymarket public-search for one keyword."""
     last_error: Optional[Exception] = None
     for attempt in range(1, MAX_RETRIES + 1):
         try:
@@ -242,20 +392,7 @@ def fetch_search(keyword: str) -> list[dict[str, Any]]:
             events = payload.get("events") if isinstance(payload, dict) else None
             if not isinstance(events, list):
                 return []
-            markets: list[dict[str, Any]] = []
-            for event in events:
-                if not isinstance(event, dict):
-                    continue
-                event_slug = event.get("slug") or ""
-                event_title = event.get("title") or ""
-                for market in event.get("markets") or []:
-                    if not isinstance(market, dict):
-                        continue
-                    enriched = dict(market)
-                    enriched["_event_slug"] = event_slug
-                    enriched["_event_title"] = event_title
-                    markets.append(enriched)
-            return markets
+            return _markets_from_events(events)
         except Exception as exc:
             last_error = exc
             logger.warning(
@@ -268,6 +405,43 @@ def fetch_search(keyword: str) -> list[dict[str, Any]]:
     if last_error is not None:
         raise last_error
     return []
+
+
+def fetch_active_events_markets() -> list[dict[str, Any]]:
+    """Paginate active/open Polymarket events (public-search often returns closed)."""
+    all_markets: list[dict[str, Any]] = []
+    for page in range(ACTIVE_EVENTS_PAGES):
+        offset = page * ACTIVE_EVENTS_LIMIT
+        try:
+            response = requests.get(
+                GAMMA_EVENTS_URL,
+                params={
+                    "limit": ACTIVE_EVENTS_LIMIT,
+                    "offset": offset,
+                    "active": "true",
+                    "closed": "false",
+                    "order": "volume",
+                    "ascending": "false",
+                },
+                headers={"User-Agent": "GEXIS-MVP/0.1 (data-engine)"},
+                timeout=REQUEST_TIMEOUT_SEC,
+            )
+            response.raise_for_status()
+            events = response.json()
+            if not isinstance(events, list) or not events:
+                break
+            batch = _markets_from_events(events)
+            logger.info(
+                "Active events page offset=%s -> %s events / %s markets",
+                offset,
+                len(events),
+                len(batch),
+            )
+            all_markets.extend(batch)
+        except Exception:
+            logger.exception("Failed fetching active Polymarket events offset=%s", offset)
+            break
+    return all_markets
 
 
 def market_event_url(market: dict[str, Any]) -> str:
@@ -305,7 +479,6 @@ def upsert_signal(
     event_url: Optional[str],
     expires_at: datetime,
 ) -> str:
-    """Insert or update by (source, title, geography_id). Returns 'insert'|'update'."""
     cursor.execute(
         """
         SELECT id FROM market_signals
@@ -377,11 +550,6 @@ def upsert_signal(
 
 
 def seed_signals(cursor, iso_map: dict[str, str]) -> int:
-    """
-    Realistic 2026-relevant seed signals when Polymarket yields nothing usable.
-
-    Marked source='seed' so they are distinguishable from live API rows.
-    """
     now = datetime.now(timezone.utc)
     seeds = [
         {
@@ -398,8 +566,8 @@ def seed_signals(cursor, iso_map: dict[str, str]) -> int:
         {
             "isos": ["USA", "CHN"],
             "signal_type": "tariff_risk",
-            "title": "Will US average tariffs on Chinese goods exceed 40% by end of 2026?",
-            "description": "Seed signal tracking escalation of US–China tariff rates.",
+            "title": "Will the US impose new tariffs on Chinese goods above 40% by end of 2026?",
+            "description": "Seed signal tracking US–China tariff escalation.",
             "probability": 0.58,
             "direction": "negative",
             "affected_dimensions": ["taxEnvironment", "competitorSaturation"],
@@ -407,10 +575,10 @@ def seed_signals(cursor, iso_map: dict[str, str]) -> int:
             "expires_at": now + timedelta(days=150),
         },
         {
-            "isos": ["CHN", "TWN"],
+            "isos": ["CHN"],
             "signal_type": "sanctions",
-            "title": "Will new semiconductor export controls targeting China take effect in 2026?",
-            "description": "Seed signal for tech-export sanctions affecting Asia supply chains.",
+            "title": "Will new economic sanctions or export controls against China take effect in 2026?",
+            "description": "Seed signal for tech-export sanctions.",
             "probability": 0.64,
             "direction": "negative",
             "affected_dimensions": ["regulatoryEase", "marketSizeAndGrowth"],
@@ -429,43 +597,10 @@ def seed_signals(cursor, iso_map: dict[str, str]) -> int:
             "expires_at": now + timedelta(days=200),
         },
         {
-            "isos": ["DEU", "FRA"],
-            "signal_type": "regulatory_change",
-            "title": "Will the EU enact a new AI compliance package affecting exporters in 2026?",
-            "description": "Seed regulatory signal for EU digital compliance burden.",
-            "probability": 0.55,
-            "direction": "neutral",
-            "affected_dimensions": ["regulatoryEase"],
-            "event_url": "https://polymarket.com/",
-            "expires_at": now + timedelta(days=160),
-        },
-        {
-            "isos": ["BRA"],
-            "signal_type": "political_instability",
-            "title": "Will Brazil face a major fiscal-policy reversal before mid-2027?",
-            "description": "Seed political/policy risk signal for Latin America market entry.",
-            "probability": 0.41,
-            "direction": "negative",
-            "affected_dimensions": ["regulatoryEase", "trajectory"],
-            "event_url": "https://polymarket.com/",
-            "expires_at": now + timedelta(days=210),
-        },
-        {
-            "isos": ["TUR"],
-            "signal_type": "currency_crisis",
-            "title": "Will the Turkish lira lose more than 25% vs USD in 2026?",
-            "description": "Seed currency-crisis signal for FX-sensitive market planning.",
-            "probability": 0.48,
-            "direction": "negative",
-            "affected_dimensions": ["taxEnvironment", "marketSizeAndGrowth"],
-            "event_url": "https://polymarket.com/",
-            "expires_at": now + timedelta(days=140),
-        },
-        {
             "isos": ["USA"],
             "signal_type": "economic_policy",
             "title": "Will the US enter a recession by end of 2026?",
-            "description": "Seed macro signal affecting market-size and trajectory projections.",
+            "description": "Seed macro signal for market-size and trajectory projections.",
             "probability": 0.36,
             "direction": "neutral",
             "affected_dimensions": ["marketSizeAndGrowth", "trajectory"],
@@ -503,8 +638,9 @@ def ingest() -> None:
     written = 0
     updated = 0
     skipped_no_country = 0
+    skipped_negative = 0
     api_failed = False
-    seen_keys: set[tuple[str, str]] = set()  # (title, iso) de-dupe across searches
+    seen_keys: set[tuple[str, str]] = set()
 
     with get_cursor() as cursor:
         iso_map = load_geography_iso_map(cursor)
@@ -519,7 +655,14 @@ def ingest() -> None:
                 api_failed = True
                 logger.exception("Polymarket API failed for keyword %r", keyword)
 
-        # De-dupe by market id/slug within this run
+        try:
+            active_batch = fetch_active_events_markets()
+            logger.info("Active events crawl returned %s markets", len(active_batch))
+            all_markets.extend(active_batch)
+        except Exception:
+            api_failed = True
+            logger.exception("Polymarket active events crawl failed")
+
         unique_markets: dict[str, dict[str, Any]] = {}
         for market in all_markets:
             key = str(market.get("id") or market.get("slug") or market.get("question"))
@@ -538,6 +681,10 @@ def ingest() -> None:
             if not title:
                 continue
             blob = f"{title} {market.get('description') or ''} {market.get('_event_title') or ''}"
+            if has_negative_keyword(blob):
+                skipped_negative += 1
+                continue
+
             classified = classify_signal(blob)
             if classified is None:
                 continue
@@ -590,26 +737,28 @@ def ingest() -> None:
                     updated += 1
 
         if written + updated == 0:
-            # API unreachable or no relevant mappable markets — seed for schema/API validation.
             logger.warning(
                 "No Polymarket signals written (api_failed=%s fetched=%s relevant=%s "
-                "skipped_no_country=%s). Loading seed signals (source='seed').",
+                "skipped_no_country=%s skipped_negative=%s). Loading seed signals.",
                 api_failed,
                 fetched_markets,
                 relevant,
                 skipped_no_country,
+                skipped_negative,
             )
             seeded = seed_signals(cursor, iso_map)
             written += seeded
             logger.info("Seeded %s signal rows", seeded)
 
     logger.info(
-        "Done fetched_markets=%s relevant=%s inserted=%s updated=%s skipped_no_country=%s",
+        "Done fetched_markets=%s relevant=%s inserted=%s updated=%s "
+        "skipped_no_country=%s skipped_negative=%s",
         fetched_markets,
         relevant,
         written,
         updated,
         skipped_no_country,
+        skipped_negative,
     )
 
 

@@ -15,6 +15,7 @@ import logging
 import math
 import sys
 from collections import defaultdict
+from datetime import datetime, timezone
 from typing import Any
 
 import numpy as np
@@ -35,6 +36,10 @@ EPS = 1e-4
 # Domain-aware regression transforms for projections
 LOG_SCORE_DIMS = {"marketSizeAndGrowth"}
 LOGIT_SCORE_DIMS = {"regulatoryEase"}
+
+# Signal → projection adjustment guardrails
+SIGNAL_HARD_CAP = 8.0
+SIGNAL_DECAY_DAYS = 7
 
 
 def configure_logging() -> None:
@@ -60,6 +65,159 @@ def round4(value: float | None) -> float | None:
     if value is None:
         return None
     return round(float(value), 4)
+
+
+def signal_age_decay(fetched_at: datetime | None, now: datetime) -> float:
+    """Signals older than 7 days without update get 50% decay."""
+    if fetched_at is None:
+        return 1.0
+    if fetched_at.tzinfo is None:
+        fetched_at = fetched_at.replace(tzinfo=timezone.utc)
+    age_days = (now - fetched_at).total_seconds() / 86400.0
+    if age_days > SIGNAL_DECAY_DAYS:
+        return 0.5
+    return 1.0
+
+
+def apply_signal_adjustments(cursor) -> None:
+    """
+    After base OLS projections are written, adjust projected_2yr / projected_5yr
+    and widen 2yr confidence intervals using active market_signals.
+
+    Never modifies annualized_rate, direction, or historical_scores.
+    """
+    now = datetime.now(timezone.utc)
+    cursor.execute(
+        """
+        SELECT
+            geography_id::text,
+            direction,
+            probability::float8,
+            severity,
+            affected_dimensions,
+            fetched_at
+        FROM market_signals
+        WHERE resolved = false
+          AND (expires_at IS NULL OR expires_at > NOW())
+          AND geography_id IS NOT NULL
+        """
+    )
+    rows = cursor.fetchall()
+    if not rows:
+        logger.info("Signal adjustments: no active signals")
+        return
+
+    # Collect per-(geo, dimension) list of (signed_shift, widen)
+    buckets: dict[tuple[str, str], list[tuple[float, float]]] = defaultdict(list)
+    skipped_dims = 0
+
+    for geography_id, direction, probability, severity, affected_dims, fetched_at in rows:
+        sev = int(severity or 3)
+        decay = signal_age_decay(fetched_at, now)
+
+        if probability is not None:
+            magnitude = float(probability) * float(sev) * 0.5
+        else:
+            magnitude = float(sev) * 0.3
+
+        magnitude = min(SIGNAL_HARD_CAP, magnitude * decay)
+        if magnitude <= 0:
+            continue
+
+        dims = affected_dims or []
+        if not isinstance(dims, list):
+            continue
+
+        for dim in dims:
+            if dim not in BASE_DIMENSION_KEYS:
+                skipped_dims += 1
+                continue
+            if direction == "negative":
+                signed = -magnitude
+                widen = magnitude * 0.3
+            elif direction == "positive":
+                signed = magnitude
+                widen = magnitude * 0.3
+            else:
+                # neutral: widen CI only
+                signed = 0.0
+                widen = magnitude * 0.3
+            buckets[(geography_id, dim)].append((signed, widen))
+
+    adjusted_rows = 0
+    for (geography_id, dimension), parts in buckets.items():
+        count = len(parts)
+        raw_shift = sum(s for s, _ in parts)
+        raw_widen = sum(w for _, w in parts)
+        scale = 1.0 / math.sqrt(count) if count > 0 else 1.0
+        total_shift = raw_shift * scale
+        total_widen = raw_widen * scale
+        if total_shift > SIGNAL_HARD_CAP:
+            total_shift = SIGNAL_HARD_CAP
+        elif total_shift < -SIGNAL_HARD_CAP:
+            total_shift = -SIGNAL_HARD_CAP
+
+        cursor.execute(
+            """
+            SELECT
+                projected_2yr::float8,
+                projected_5yr::float8,
+                confidence_lower_2yr::float8,
+                confidence_upper_2yr::float8
+            FROM trend_scores
+            WHERE geography_id = %s AND dimension = %s
+            """,
+            (geography_id, dimension),
+        )
+        trend = cursor.fetchone()
+        if not trend:
+            continue
+
+        p2, p5, lo2, hi2 = trend
+        if p2 is None or p5 is None:
+            continue
+
+        new_p2 = clamp_score(float(p2) + total_shift)
+        new_p5 = clamp_score(float(p5) + total_shift * 0.6)
+
+        mid = new_p2
+        old_lo = float(lo2) if lo2 is not None else mid
+        old_hi = float(hi2) if hi2 is not None else mid
+        half = max(mid - old_lo, old_hi - mid, 0.0) + total_widen
+        new_lo = clamp_score(mid - half)
+        new_hi = clamp_score(mid + half)
+        if new_lo > new_hi:
+            new_lo, new_hi = new_hi, new_lo
+
+        cursor.execute(
+            """
+            UPDATE trend_scores
+            SET projected_2yr = %s,
+                projected_5yr = %s,
+                confidence_lower_2yr = %s,
+                confidence_upper_2yr = %s,
+                computed_at = NOW()
+            WHERE geography_id = %s AND dimension = %s
+            """,
+            (
+                round4(new_p2),
+                round4(new_p5),
+                round4(new_lo),
+                round4(new_hi),
+                geography_id,
+                dimension,
+            ),
+        )
+        adjusted_rows += 1
+
+    logger.info(
+        "Signal adjustments applied: active_signals=%s geo_dim_pairs=%s "
+        "rows_updated=%s skipped_non_base_dims=%s",
+        len(rows),
+        len(buckets),
+        adjusted_rows,
+        skipped_dims,
+    )
 
 
 def transform_for_norm(value: float, normalization: str) -> float | None:
@@ -528,6 +686,8 @@ def compute_all() -> None:
             dict(direction_counts),
             dict(confidence_counts),
         )
+
+        apply_signal_adjustments(cursor)
 
 
 if __name__ == "__main__":
