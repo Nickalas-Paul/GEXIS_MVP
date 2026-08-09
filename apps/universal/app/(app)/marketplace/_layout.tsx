@@ -4,6 +4,7 @@ export default function MarketplaceLayout() {
   return (
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="index" />
+      <Stack.Screen name="onboard" />
       <Stack.Screen name="[agentId]" />
     </Stack>
   );

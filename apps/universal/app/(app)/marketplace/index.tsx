@@ -1,5 +1,5 @@
 import { Link } from 'expo-router';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function MarketplaceScreen() {
@@ -11,6 +11,11 @@ export default function MarketplaceScreen() {
         <Text style={styles.copy}>Agent directory (placeholder).</Text>
         <Link href="/marketplace/demo-agent" style={styles.link}>
           Open sample agent
+        </Link>
+        <Link href="/marketplace/onboard" asChild>
+          <Pressable style={styles.cta}>
+            <Text style={styles.ctaText}>Become an Agent</Text>
+          </Pressable>
         </Link>
       </View>
     </SafeAreaView>
@@ -44,5 +49,18 @@ const styles = StyleSheet.create({
     marginTop: 8,
     fontSize: 16,
     color: '#0b57d0',
+  },
+  cta: {
+    marginTop: 16,
+    alignSelf: 'flex-start',
+    backgroundColor: '#1a1a1a',
+    borderRadius: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  ctaText: {
+    color: '#ffffff',
+    fontSize: 15,
+    fontWeight: '700',
   },
 });

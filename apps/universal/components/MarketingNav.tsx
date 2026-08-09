@@ -46,7 +46,9 @@ export function MarketingNav({ theme = 'light' }: Props) {
               {user?.email}
             </Text>
             <Link href="/explorer" asChild>
-              <Pressable style={[styles.cta, dark && styles.ctaDark]}>
+              <Pressable
+                style={StyleSheet.flatten([styles.cta, dark && styles.ctaDark])}
+              >
                 <Text style={styles.ctaText}>Go to Explorer</Text>
               </Pressable>
             </Link>
@@ -61,7 +63,9 @@ export function MarketingNav({ theme = 'light' }: Props) {
               </Pressable>
             </Link>
             <Link href="/register" asChild>
-              <Pressable style={[styles.cta, dark && styles.ctaDark]}>
+              <Pressable
+                style={StyleSheet.flatten([styles.cta, dark && styles.ctaDark])}
+              >
                 <Text style={styles.ctaText}>Start free</Text>
               </Pressable>
             </Link>

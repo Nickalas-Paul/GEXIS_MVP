@@ -100,6 +100,19 @@ export async function fetchGeographiesGeojson(
   return parseJson<GeographyFeatureCollection>(response);
 }
 
+/** List countries from GET /api/geographies (defaults to region_type=country). */
+export async function listCountries(): Promise<
+  Array<{ id: string; name: string; isoCode: string | null }>
+> {
+  const response = await fetch(`${getApiUrl()}/api/geographies`);
+  const json = await parseJson<ApiEnvelope<GeographyListItem[]>>(response);
+  return (json.data ?? []).map((g) => ({
+    id: g.id,
+    name: g.name,
+    isoCode: g.isoCode,
+  }));
+}
+
 export async function filterGeographies(
   filters: GeographyFilters,
   options?: {
