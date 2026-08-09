@@ -143,3 +143,86 @@ export function filtersToQueryRecord(
   }
   return out;
 }
+
+/** Portable JSONB shape stored in saved_searches.filters. */
+export type SavedFilterPayload = {
+  population?: number;
+  maxCorpTaxRate?: number;
+  regulatoryEase?: number;
+  talentDensity?: number;
+  competitorSaturation?: number;
+  vertical?: string;
+  horizon?: TimeHorizon | string;
+  // Also accept explorer-native keys for forward compatibility.
+  minPopulation?: number;
+  minTalentDensity?: number;
+  maxCompetitorSaturation?: number;
+  minRegulatoryEase?: number;
+  industryVertical?: string;
+};
+
+export function stateToSavedFilters(
+  state: ExplorerFilterState
+): SavedFilterPayload {
+  return {
+    population: state.minPopulation,
+    maxCorpTaxRate: state.maxCorpTaxRate,
+    regulatoryEase: state.minRegulatoryEase,
+    talentDensity: state.minTalentDensity,
+    competitorSaturation: state.maxCompetitorSaturation,
+    vertical: state.industryVertical,
+    horizon: state.horizon,
+  };
+}
+
+function numField(
+  raw: SavedFilterPayload,
+  keys: Array<keyof SavedFilterPayload>,
+  fallback: number
+): number {
+  for (const key of keys) {
+    const v = raw[key];
+    if (typeof v === 'number' && Number.isFinite(v)) return v;
+  }
+  return fallback;
+}
+
+export function savedFiltersToState(
+  raw: Record<string, unknown> | null | undefined
+): ExplorerFilterState {
+  const f = (raw ?? {}) as SavedFilterPayload;
+  const horizonRaw = f.horizon;
+  const horizon: TimeHorizon =
+    horizonRaw === '2yr' || horizonRaw === '5yr' ? horizonRaw : 'current';
+
+  const vertical =
+    (typeof f.vertical === 'string' && f.vertical) ||
+    (typeof f.industryVertical === 'string' && f.industryVertical) ||
+    DEFAULT_FILTERS.industryVertical;
+
+  return {
+    industryVertical: vertical === 'all_industries' ? DEFAULT_INDUSTRY_VERTICAL : vertical,
+    horizon,
+    minPopulation: numField(f, ['population', 'minPopulation'], DEFAULT_FILTERS.minPopulation),
+    maxCorpTaxRate: numField(
+      f,
+      ['maxCorpTaxRate'],
+      DEFAULT_FILTERS.maxCorpTaxRate
+    ),
+    minTalentDensity: numField(
+      f,
+      ['talentDensity', 'minTalentDensity'],
+      DEFAULT_FILTERS.minTalentDensity
+    ),
+    maxCompetitorSaturation: numField(
+      f,
+      ['competitorSaturation', 'maxCompetitorSaturation'],
+      DEFAULT_FILTERS.maxCompetitorSaturation
+    ),
+    minRegulatoryEase: numField(
+      f,
+      ['regulatoryEase', 'minRegulatoryEase'],
+      DEFAULT_FILTERS.minRegulatoryEase
+    ),
+  };
+}

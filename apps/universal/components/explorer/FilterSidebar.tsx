@@ -20,6 +20,7 @@ import {
 import { DEFAULT_INDUSTRY_VERTICAL } from '@/lib/industryVerticals';
 
 import IndustryVerticalSelect from './IndustryVerticalSelect';
+import SavedSearchesPanel from './SavedSearchesPanel';
 
 type Props = {
   filters: ExplorerFilterState;
@@ -360,6 +361,8 @@ export default function FilterSidebar({ filters, onChange, onReset, style }: Pro
           onChange={(minRegulatoryEase) => onChange({ minRegulatoryEase })}
         />
       </FilterRow>
+
+      <SavedSearchesPanel filters={filters} onChange={onChange} />
     </View>
   );
 }
