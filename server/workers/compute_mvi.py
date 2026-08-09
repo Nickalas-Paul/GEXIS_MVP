@@ -179,27 +179,20 @@ def compute_confidence(
     dimensions_scored: int,
     indicators_present: int,
     indicators_total: int,
-    used_proxy: bool,
 ) -> str:
     """
-    High: 6–7 dimensions scored and ≥60% indicator coverage (proxy caps to medium).
-    Medium: 4–5 dimensions scored, or ≥30% coverage.
-    Low: 1–3 dimensions scored or <30% coverage.
+    High: ≥6 dimensions scored and ≥60% indicator coverage.
+    Medium: ≥4 dimensions scored, or ≥30% coverage.
+    Low: fewer than 4 dimensions scored and <30% coverage.
     """
     coverage = (
         (indicators_present / indicators_total) if indicators_total > 0 else 0.0
     )
     if dimensions_scored >= 6 and coverage >= 0.60:
-        level = "high"
-    elif dimensions_scored >= 4 or coverage >= 0.30:
-        level = "medium"
-    else:
-        level = "low"
-
-    # Proxy-only dimensions (e.g. talentDensity WB proxy) cap at medium.
-    if used_proxy and level == "high":
-        level = "medium"
-    return level
+        return "high"
+    if dimensions_scored >= 4 or coverage >= 0.30:
+        return "medium"
+    return "low"
 
 
 def upsert_mvi_score(
@@ -328,7 +321,6 @@ def compute_all() -> None:
             sources_used: list[dict[str, Any]] = []
             years_used: list[int] = []
             indicators_present = 0
-            used_proxy = False
 
             for dim_key in BASE_DIMENSION_KEYS:
                 dim_cfg = DIMENSIONS[dim_key]
@@ -348,8 +340,6 @@ def compute_all() -> None:
                             "year": years[geo_id],
                         }
                     )
-                    if ind.get("is_proxy"):
-                        used_proxy = True
 
                 dim_score = weighted_average(parts)
                 dimensions_out[dim_key] = (
@@ -391,7 +381,6 @@ def compute_all() -> None:
                 dimensions_scored=dimensions_scored,
                 indicators_present=indicators_present,
                 indicators_total=total_configured_indicators,
-                used_proxy=used_proxy,
             )
             confidence_counts[confidence] += 1
 
