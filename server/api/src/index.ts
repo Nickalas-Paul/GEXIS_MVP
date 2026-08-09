@@ -10,6 +10,7 @@ import { connectRedis, redisReady } from './config/redis';
 import authRoutes from './routes/auth';
 import agentRoutes from './routes/agents';
 import marketplaceRoutes from './routes/marketplace';
+import engagementRoutes from './routes/engagements';
 import exportRoutes from './routes/exports';
 import geographyRoutes from './routes/geographies';
 import mviRoutes from './routes/mvi';
@@ -53,6 +54,7 @@ app.use('/api/exports', exportRoutes);
 app.use('/api/saved-searches', savedSearchRoutes);
 app.use('/api/agents', agentRoutes);
 app.use('/api/marketplace', marketplaceRoutes);
+app.use('/api/engagements', engagementRoutes);
 
 if (process.env.NODE_ENV !== 'production') {
   app.use('/api/dev', devRoutes);
