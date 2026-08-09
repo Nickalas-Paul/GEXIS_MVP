@@ -75,3 +75,10 @@ export * from "./agents";
 
 // Industry Verticals
 export * from "./verticals";
+
+// Market Signals (Layer 2)
+export {
+  type MarketSignal,
+  type SignalDirection,
+  type SignalSummaryMap,
+} from "./signals";

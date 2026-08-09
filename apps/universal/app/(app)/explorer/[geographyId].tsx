@@ -2,7 +2,9 @@ import {
   MVI_DIMENSION_DISPLAY,
   sourceDisplayName,
   type DimensionKey,
+  type MarketSignal,
 } from '@gexis/gexis-core';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import {
@@ -21,6 +23,15 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import TrendAnalysisSection from '@/components/explorer/TrendAnalysisSection';
 import { mviScoreColor } from '@/lib/mviColors';
 import {
+  directionLabel,
+  formatProbabilityPct,
+  formatRelativeFetchedAt,
+  shortDimensionList,
+  signalAccent,
+  signalTypeIcon,
+  sourceDisplayLabel,
+} from '@/lib/signalsUi';
+import {
   COMPARE_MAX,
   useCompareSelection,
 } from '@/hooks/useCompareSelection';
@@ -34,7 +45,7 @@ import {
   type QuickFacts,
   type TrendData,
 } from '@/services/geographies';
-
+import { getGeographySignals } from '@/services/signals';
 function openExportUrl(url: string): void {
   if (Platform.OS === 'web' && typeof window !== 'undefined') {
     window.open(url, '_blank');
@@ -306,6 +317,7 @@ export default function GeographyDetailScreen() {
   const [data, setData] = useState<GeographyDetail | null>(null);
   const [trendData, setTrendData] = useState<TrendData | null>(null);
   const [trendsLoading, setTrendsLoading] = useState(false);
+  const [signals, setSignals] = useState<MarketSignal[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
@@ -322,6 +334,7 @@ export default function GeographyDetailScreen() {
     let cancelled = false;
     setLoading(true);
     setTrendsLoading(true);
+    setSignals([]);
     setError(null);
     void getGeographyDetail(geographyId, vertical)
       .then((geo) => {
@@ -346,6 +359,9 @@ export default function GeographyDetailScreen() {
       .finally(() => {
         if (!cancelled) setTrendsLoading(false);
       });
+    void getGeographySignals(geographyId).then((res) => {
+      if (!cancelled) setSignals(res.signals);
+    });
     return () => {
       cancelled = true;
     };
@@ -443,6 +459,13 @@ export default function GeographyDetailScreen() {
                     Sources: {sourceCount} active
                   </Text>
                 </View>
+                {signals.length > 0 ? (
+                  <View style={[styles.pill, styles.signalPill]}>
+                    <Text style={styles.signalPillText}>
+                      {signals.length} active signal{signals.length === 1 ? '' : 's'}
+                    </Text>
+                  </View>
+                ) : null}
               </View>
 
               {!isWide ? (
@@ -471,6 +494,83 @@ export default function GeographyDetailScreen() {
                   );
                 })}
               </View>
+
+              {signals.length > 0 ? (
+                <View style={styles.signalsSection}>
+                  <Text style={styles.signalsSectionTitle}>EVENTS & SIGNALS</Text>
+                  {signals.map((sig) => {
+                    const accent = signalAccent(sig.direction);
+                    const prob = formatProbabilityPct(sig.probability);
+                    const dimLabels = shortDimensionList(sig.affectedDimensions);
+                    return (
+                      <View
+                        key={sig.id}
+                        style={[
+                          styles.signalCard,
+                          { backgroundColor: accent.cardBg },
+                        ]}
+                      >
+                        <View
+                          style={[
+                            styles.signalIconWrap,
+                            { backgroundColor: accent.pillBg },
+                          ]}
+                        >
+                          <MaterialCommunityIcons
+                            // Closest MaterialCommunityIcons mapping to Tabler signal icons
+                            name={signalTypeIcon(sig.signalType) as 'information-outline'}
+                            size={16}
+                            color={accent.dot}
+                          />
+                        </View>
+                        <View style={styles.signalCardBody}>
+                          <Text style={styles.signalCardTitle}>{sig.title}</Text>
+                          {sig.description ? (
+                            <Text style={styles.signalCardDesc}>{sig.description}</Text>
+                          ) : null}
+                          <View style={styles.signalTagRow}>
+                            {prob ? (
+                              <View
+                                style={[
+                                  styles.signalTag,
+                                  { backgroundColor: accent.pillBg },
+                                ]}
+                              >
+                                <Text style={[styles.signalTagText, { color: accent.pillText }]}>
+                                  {prob}
+                                </Text>
+                              </View>
+                            ) : (
+                              <View
+                                style={[
+                                  styles.signalTag,
+                                  { backgroundColor: accent.pillBg },
+                                ]}
+                              >
+                                <Text style={[styles.signalTagText, { color: accent.pillText }]}>
+                                  {directionLabel(sig.direction)}
+                                </Text>
+                              </View>
+                            )}
+                            {dimLabels.map((label) => (
+                              <View key={label} style={styles.signalDimPill}>
+                                <Text style={styles.signalDimPillText}>{label}</Text>
+                              </View>
+                            ))}
+                          </View>
+                          <Text style={styles.signalMeta}>
+                            {sourceDisplayLabel(sig.source)} ·{' '}
+                            {formatRelativeFetchedAt(sig.fetchedAt)}
+                          </Text>
+                        </View>
+                      </View>
+                    );
+                  })}
+                  <Text style={styles.signalsFooter}>
+                    Signals inform 2yr/5yr projections. They don't replace dimension scores.
+                  </Text>
+                </View>
+              ) : null}
 
               <TrendAnalysisSection
                 trendData={trendData}
@@ -812,6 +912,15 @@ const styles = StyleSheet.create({
     fontSize: 11,
     ...mono,
   },
+  signalPill: {
+    backgroundColor: 'rgba(245, 158, 11, 0.12)',
+    borderColor: 'rgba(245, 158, 11, 0.35)',
+  },
+  signalPillText: {
+    color: '#f59e0b',
+    fontSize: 11,
+    ...mono,
+  },
   confRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -833,6 +942,88 @@ const styles = StyleSheet.create({
   dimStack: {
     gap: 12,
     marginTop: 8,
+  },
+  signalsSection: {
+    gap: 12,
+    marginTop: 8,
+    paddingTop: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#1c1c2a',
+  },
+  signalsSectionTitle: {
+    color: 'rgba(255,255,255,0.45)',
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 1.4,
+    ...mono,
+  },
+  signalCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    borderWidth: 1,
+    borderColor: '#1c1c2a',
+    borderRadius: 12,
+    padding: 14,
+  },
+  signalIconWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  signalCardBody: {
+    flex: 1,
+    gap: 6,
+  },
+  signalCardTitle: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+    lineHeight: 20,
+  },
+  signalCardDesc: {
+    color: 'rgba(255,255,255,0.45)',
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  signalTagRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 2,
+  },
+  signalTag: {
+    borderRadius: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+  },
+  signalTagText: {
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  signalDimPill: {
+    borderRadius: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  signalDimPillText: {
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  signalMeta: {
+    color: 'rgba(255,255,255,0.35)',
+    fontSize: 11,
+    marginTop: 2,
+  },
+  signalsFooter: {
+    color: 'rgba(255,255,255,0.35)',
+    fontSize: 11,
+    lineHeight: 16,
+    marginTop: 2,
   },
   dimCard: {
     backgroundColor: '#0e0e16',

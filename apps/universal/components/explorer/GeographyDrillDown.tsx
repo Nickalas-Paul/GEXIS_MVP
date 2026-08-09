@@ -9,14 +9,23 @@ import {
   View,
 } from 'react-native';
 
+import type { MarketSignal } from '@gexis/gexis-core';
+
 import {
   COMPARE_MAX,
   useCompareSelection,
 } from '@/hooks/useCompareSelection';
 import {
+  directionLabel,
+  formatProbabilityPct,
+  shortDimensionLabels,
+  signalAccent,
+} from '@/lib/signalsUi';
+import {
   fetchGeographyById,
   type GeographyListItem,
 } from '@/services/geographies';
+import { getGeographySignals } from '@/services/signals';
 
 const DIMENSIONS: Array<{
   key: keyof NonNullable<NonNullable<GeographyListItem['mvi']>['dimensions']>;
@@ -60,15 +69,18 @@ export default function GeographyDrillDown({
   const [data, setData] = useState<GeographyListItem | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [signals, setSignals] = useState<MarketSignal[]>([]);
 
   useEffect(() => {
     if (!geographyIdOrIso) {
       setData(null);
+      setSignals([]);
       return;
     }
     let cancelled = false;
     setLoading(true);
     setError(null);
+    setSignals([]);
     void fetchGeographyById(geographyIdOrIso, vertical)
       .then((geo) => {
         if (!cancelled) setData(geo);
@@ -82,6 +94,10 @@ export default function GeographyDrillDown({
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
+    // Additive: never block dimension scores on signals.
+    void getGeographySignals(geographyIdOrIso).then((res) => {
+      if (!cancelled) setSignals(res.signals);
+    });
     return () => {
       cancelled = true;
     };
@@ -173,6 +189,83 @@ export default function GeographyDrillDown({
               );
             })}
           </View>
+
+          {signals.length > 0 ? (
+            <View style={styles.signalsSection}>
+              <View style={styles.signalsHeader}>
+                <Text style={styles.signalsTitle}>ACTIVE SIGNALS</Text>
+                <View style={styles.signalsBadge}>
+                  <Text style={styles.signalsBadgeText}>{signals.length}</Text>
+                </View>
+              </View>
+              {signals.map((sig) => {
+                const accent = signalAccent(sig.direction);
+                const prob = formatProbabilityPct(sig.probability);
+                const dims = shortDimensionLabels(sig.affectedDimensions);
+                return (
+                  <View
+                    key={sig.id}
+                    style={StyleSheet.flatten([
+                      styles.signalCard,
+                      { backgroundColor: accent.cardBg },
+                    ])}
+                  >
+                    <View
+                      style={StyleSheet.flatten([
+                        styles.signalDot,
+                        { backgroundColor: accent.dot },
+                      ])}
+                    />
+                    <View style={styles.signalBody}>
+                      <Text style={styles.signalTitle} numberOfLines={2}>
+                        {sig.title}
+                      </Text>
+                      <View style={styles.signalTags}>
+                        {prob ? (
+                          <View
+                            style={StyleSheet.flatten([
+                              styles.signalPill,
+                              { backgroundColor: accent.pillBg },
+                            ])}
+                          >
+                            <Text
+                              style={StyleSheet.flatten([
+                                styles.signalPillText,
+                                { color: accent.pillText },
+                              ])}
+                            >
+                              {prob}
+                            </Text>
+                          </View>
+                        ) : (
+                          <View
+                            style={StyleSheet.flatten([
+                              styles.signalPill,
+                              { backgroundColor: accent.pillBg },
+                            ])}
+                          >
+                            <Text
+                              style={StyleSheet.flatten([
+                                styles.signalPillText,
+                                { color: accent.pillText },
+                              ])}
+                            >
+                              {directionLabel(sig.direction)}
+                            </Text>
+                          </View>
+                        )}
+                        {dims ? (
+                          <Text style={styles.signalDims} numberOfLines={1}>
+                            {dims}
+                          </Text>
+                        ) : null}
+                      </View>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          ) : null}
 
           <View style={styles.actions}>
             {/* router.push avoids Link asChild → Slot style-array crash on native */}
@@ -361,6 +454,82 @@ const styles = StyleSheet.create({
   dimFill: {
     height: 4,
     borderRadius: 2,
+  },
+  signalsSection: {
+    gap: 10,
+    paddingTop: 4,
+    borderTopWidth: 1,
+    borderTopColor: '#1c1c2a',
+  },
+  signalsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  signalsTitle: {
+    color: 'rgba(255,255,255,0.45)',
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 1.3,
+  },
+  signalsBadge: {
+    minWidth: 18,
+    height: 18,
+    paddingHorizontal: 6,
+    borderRadius: 9,
+    backgroundColor: 'rgba(245, 158, 11, 0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  signalsBadgeText: {
+    color: '#f59e0b',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  signalCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    borderWidth: 1,
+    borderColor: '#1c1c2a',
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+  },
+  signalDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    marginTop: 4,
+  },
+  signalBody: {
+    flex: 1,
+    gap: 6,
+  },
+  signalTitle: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  signalTags: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 6,
+  },
+  signalPill: {
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  signalPillText: {
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  signalDims: {
+    color: 'rgba(255,255,255,0.4)',
+    fontSize: 10,
+    flexShrink: 1,
   },
   actions: {
     gap: 8,

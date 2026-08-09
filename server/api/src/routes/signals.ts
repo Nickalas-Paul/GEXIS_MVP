@@ -111,4 +111,39 @@ router.get('/', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * GET /api/signals/summary
+ * Active signal counts keyed by geography ISO3 (only geos with ≥1).
+ */
+router.get('/summary', async (_req: Request, res: Response) => {
+  try {
+    const result = await pool.query<{ iso_code: string; count: string }>(
+      `
+      SELECT upper(g.iso_code) AS iso_code, COUNT(*)::int AS count
+      FROM market_signals ms
+      INNER JOIN geographies g ON g.id = ms.geography_id
+      WHERE ms.resolved = false
+        AND (ms.expires_at IS NULL OR ms.expires_at > NOW())
+        AND g.iso_code IS NOT NULL
+        AND g.region_type = 'country'
+      GROUP BY upper(g.iso_code)
+      HAVING COUNT(*) > 0
+      `
+    );
+
+    const summary: Record<string, number> = {};
+    for (const row of result.rows) {
+      summary[row.iso_code] = Number(row.count);
+    }
+
+    res.json({
+      success: true,
+      ...apiResponse(summary),
+    });
+  } catch (err) {
+    console.error('[signals] summary error:', err);
+    res.status(500).json(apiError('Internal server error'));
+  }
+});
+
 export default router;

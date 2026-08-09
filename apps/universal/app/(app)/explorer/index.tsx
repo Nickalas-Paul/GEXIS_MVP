@@ -34,6 +34,8 @@ import {
   type GeographyFeatureProperties,
   type GeographyListItem,
 } from '@/services/geographies';
+import { getSignalsSummary } from '@/services/signals';
+import type { SignalSummaryMap } from '@gexis/gexis-core';
 
 const DESKTOP_BREAKPOINT = 768;
 
@@ -59,6 +61,7 @@ export default function ExplorerScreen() {
   const [flyToTarget, setFlyToTarget] = useState<MapFlyToTarget | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [mobileTab, setMobileTab] = useState<'filters' | 'matches'>('filters');
+  const [signalCounts, setSignalCounts] = useState<SignalSummaryMap>({});
 
   const dataLabel = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const freshnessLabel =
@@ -67,6 +70,16 @@ export default function ExplorerScreen() {
       : filters.horizon === '5yr'
         ? { prefix: 'Projected', label: '5-Year' }
         : { prefix: 'Data', label: dataLabel };
+
+  useEffect(() => {
+    let cancelled = false;
+    void getSignalsSummary().then((summary) => {
+      if (!cancelled) setSignalCounts(summary);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -177,6 +190,7 @@ export default function ExplorerScreen() {
             items={matched}
             selectedIsoCode={selectedIso}
             onSelect={onMatchSelect}
+            signalCounts={signalCounts}
           />
         </View>
       ) : null}
@@ -306,6 +320,7 @@ export default function ExplorerScreen() {
                 items={matched}
                 selectedIsoCode={selectedIso}
                 onSelect={onMatchSelect}
+                signalCounts={signalCounts}
                 style={styles.mobileMatches}
               />
             )}

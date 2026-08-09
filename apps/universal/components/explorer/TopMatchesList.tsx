@@ -7,6 +7,8 @@ type Props = {
   items: GeographyListItem[];
   selectedIsoCode?: string | null;
   onSelect: (item: GeographyListItem) => void;
+  /** ISO3 → active signal count. Amber dot when count > 0. */
+  signalCounts?: Record<string, number>;
   style?: object;
 };
 
@@ -14,6 +16,7 @@ export default function TopMatchesList({
   items,
   selectedIsoCode,
   onSelect,
+  signalCounts,
   style,
 }: Props) {
   const scored = items.filter((g) => g.mvi?.overall != null);
@@ -29,6 +32,8 @@ export default function TopMatchesList({
           const score = item.mvi?.overall ?? null;
           const color = mviScoreColor(score);
           const selected = item.isoCode === selectedIsoCode;
+          const iso = (item.isoCode ?? '').toUpperCase();
+          const hasSignals = iso ? (signalCounts?.[iso] ?? 0) > 0 : false;
           return (
             <Pressable
               key={item.id}
@@ -50,6 +55,7 @@ export default function TopMatchesList({
               <Text style={StyleSheet.flatten([styles.score, { color }])}>
                 {score != null ? Math.round(score) : '—'}
               </Text>
+              {hasSignals ? <View style={styles.signalDot} /> : <View style={styles.signalDotSpacer} />}
             </Pressable>
           );
         })}
@@ -124,6 +130,16 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     minWidth: 28,
     textAlign: 'right',
+  },
+  signalDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#f59e0b',
+  },
+  signalDotSpacer: {
+    width: 6,
+    height: 6,
   },
   empty: {
     color: 'rgba(255,255,255,0.4)',
