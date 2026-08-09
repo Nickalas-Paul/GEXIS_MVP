@@ -12,6 +12,7 @@ import agentRoutes from './routes/agents';
 import marketplaceRoutes from './routes/marketplace';
 import engagementRoutes from './routes/engagements';
 import shortlistRoutes from './routes/shortlist';
+import notificationRoutes from './routes/notifications';
 import exportRoutes from './routes/exports';
 import geographyRoutes from './routes/geographies';
 import mviRoutes from './routes/mvi';
@@ -57,6 +58,7 @@ app.use('/api/agents', agentRoutes);
 app.use('/api/marketplace', marketplaceRoutes);
 app.use('/api/engagements', engagementRoutes);
 app.use('/api/shortlist', shortlistRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 if (process.env.NODE_ENV !== 'production') {
   app.use('/api/dev', devRoutes);

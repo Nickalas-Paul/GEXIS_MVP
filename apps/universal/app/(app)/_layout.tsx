@@ -1,4 +1,5 @@
-import { Link, Redirect, Slot, Tabs } from 'expo-router';
+import { Link, Redirect, Slot, Tabs, usePathname } from 'expo-router';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Platform,
@@ -13,10 +14,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CompareProvider } from '@/hooks/useCompareSelection';
 import { useTierAccess } from '@/hooks/useTierAccess';
 import { useAuth } from '@/services/auth';
+import { getUnreadCount } from '@/services/notifications';
 
 const APP_LINKS = [
   { href: '/explorer' as const, label: 'Explorer' },
   { href: '/marketplace' as const, label: 'Marketplace' },
+  { href: '/engagements' as const, label: 'Engagements' },
   { href: '/settings' as const, label: 'Settings' },
 ];
 
@@ -54,6 +57,50 @@ function TierBadge() {
   );
 }
 
+function NotificationBell() {
+  const { isAuthenticated } = useAuth();
+  const pathname = usePathname();
+  const [count, setCount] = useState(0);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setCount(0);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const n = await getUnreadCount();
+        if (!cancelled) setCount(n);
+      } catch {
+        // non-fatal
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, pathname]);
+
+  return (
+    <Link href="/notifications" asChild>
+      <Pressable
+        testID="notification-bell"
+        style={styles.bellWrap}
+        accessibilityLabel="Notifications"
+      >
+        <Text style={styles.bellIcon}>🔔</Text>
+        {count > 0 ? (
+          <View style={styles.bellBadge} testID="notification-badge">
+            <Text style={styles.bellBadgeText}>
+              {count > 99 ? '99+' : String(count)}
+            </Text>
+          </View>
+        ) : null}
+      </Pressable>
+    </Link>
+  );
+}
+
 function WebSidebarShell() {
   const { user, logout } = useAuth();
 
@@ -63,6 +110,7 @@ function WebSidebarShell() {
         <View style={styles.brandRow}>
           <Text style={styles.brand}>GEXIS</Text>
           <TierBadge />
+          <NotificationBell />
         </View>
         <Text style={styles.shellLabel}>App shell (sidebar)</Text>
         {user ? <Text style={styles.userEmail}>{user.email}</Text> : null}
@@ -73,6 +121,11 @@ function WebSidebarShell() {
             </Pressable>
           </Link>
         ))}
+        <Link href="/notifications" asChild>
+          <Pressable style={styles.navItem}>
+            <Text style={styles.navText}>Notifications</Text>
+          </Pressable>
+        </Link>
         <Link href="/" asChild>
           <Pressable style={styles.navItem}>
             <Text style={styles.navTextMuted}>Marketing home</Text>
@@ -110,9 +163,12 @@ function NativeTabsShell() {
           <Text style={styles.nativeBrand}>GEXIS</Text>
           <TierBadge />
         </View>
-        <Pressable onPress={() => void logout()} hitSlop={8}>
-          <Text style={styles.navTextMuted}>Log out</Text>
-        </Pressable>
+        <View style={styles.nativeActions}>
+          <NotificationBell />
+          <Pressable onPress={() => void logout()} hitSlop={8}>
+            <Text style={styles.navTextMuted}>Log out</Text>
+          </Pressable>
+        </View>
       </View>
       <Tabs
         screenOptions={{
@@ -133,7 +189,12 @@ function NativeTabsShell() {
       >
         <Tabs.Screen name="explorer" options={{ title: 'Explorer' }} />
         <Tabs.Screen name="marketplace" options={{ title: 'Marketplace' }} />
+        <Tabs.Screen name="engagements" options={{ title: 'Engagements' }} />
         <Tabs.Screen name="settings" options={{ title: 'Settings' }} />
+        <Tabs.Screen
+          name="notifications"
+          options={{ href: null, title: 'Notifications' }}
+        />
       </Tabs>
     </View>
   );
@@ -181,6 +242,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     marginBottom: 4,
+    flexWrap: 'wrap',
   },
   brand: {
     fontSize: 18,
@@ -211,6 +273,31 @@ const styles = StyleSheet.create({
   },
   badgeTextOnColor: {
     color: '#ffffff',
+  },
+  bellWrap: {
+    position: 'relative',
+    padding: 4,
+    marginLeft: 'auto',
+  },
+  bellIcon: {
+    fontSize: 16,
+  },
+  bellBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -4,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#c62828',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+  },
+  bellBadgeText: {
+    color: '#ffffff',
+    fontSize: 9,
+    fontWeight: '700',
   },
   shellLabel: {
     fontSize: 12,
@@ -266,6 +353,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+  },
+  nativeActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
   },
   nativeBrand: {
     fontSize: 16,

@@ -11,11 +11,13 @@ import {
   ENGAGEMENT_STATUS_KEYS,
   type AgentEngagement,
   type EngagementStatus,
+  type EngagementWithContext,
 } from '@gexis/gexis-core';
 import { Router, Request, Response } from 'express';
 import { pool } from '../config/database';
 import { requireAuth } from '../middleware/auth';
 import { requireTier } from '../middleware/requireTier';
+import { createNotification } from '../services/notifications';
 import { apiError, apiResponse } from '../utils/response';
 
 const router = Router();
@@ -40,6 +42,9 @@ type EngagementRow = {
   timeline: string | null;
   created_at: Date;
   updated_at: Date;
+  agent_name?: string;
+  agent_company?: string | null;
+  requester_email?: string;
 };
 
 function toEngagement(row: EngagementRow): AgentEngagement {
@@ -60,6 +65,27 @@ function toEngagement(row: EngagementRow): AgentEngagement {
         ? row.updated_at.toISOString()
         : String(row.updated_at),
   };
+}
+
+function toEngagementWithContext(row: EngagementRow): EngagementWithContext {
+  const base = toEngagement(row);
+  const extras: EngagementWithContext = { ...base };
+  if (row.agent_name !== undefined) extras.agentName = row.agent_name;
+  if (row.agent_company !== undefined) extras.agentCompany = row.agent_company;
+  if (row.requester_email !== undefined) {
+    extras.requesterEmail = row.requester_email;
+  }
+  return extras;
+}
+
+async function safeNotify(
+  input: Parameters<typeof createNotification>[0]
+): Promise<void> {
+  try {
+    await createNotification(input);
+  } catch (err) {
+    console.error('[engagements] notification error:', err);
+  }
 }
 
 function parseOptionalText(
@@ -126,10 +152,10 @@ router.post(
         return;
       }
 
-      const agentResult = await pool.query<{ id: string; user_id: string | null }>(
-        `SELECT id, user_id FROM agents WHERE id = $1`,
-        [agentId]
-      );
+      const agentResult = await pool.query<{
+        id: string;
+        user_id: string | null;
+      }>(`SELECT id, user_id FROM agents WHERE id = $1`, [agentId]);
       if (agentResult.rowCount === 0) {
         res.status(404).json(apiError('agent_not_found'));
         return;
@@ -167,7 +193,22 @@ router.post(
         ]
       );
 
-      res.status(201).json(apiResponse(toEngagement(inserted.rows[0])));
+      const engagement = inserted.rows[0];
+      res.status(201).json(apiResponse(toEngagement(engagement)));
+
+      if (agent.user_id) {
+        void safeNotify({
+          userId: agent.user_id,
+          type: 'engagement_requested',
+          title: 'New introduction request',
+          message: 'A business has requested an introduction with you.',
+          metadata: {
+            engagementId: engagement.id,
+            agentId,
+            requesterId: req.user!.id,
+          },
+        });
+      }
     } catch (err) {
       console.error('[engagements] create error:', err);
       res.status(500).json(apiError('Internal server error'));
@@ -198,18 +239,21 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
     if (role === 'requester') {
       const params: unknown[] = [req.user!.id];
       let sql = `
-        SELECT ${ENGAGEMENT_SELECT}
-        FROM agent_engagements
-        WHERE user_id = $1
+        SELECT e.id, e.agent_id, e.user_id, e.status, e.business_description,
+               e.expansion_goals, e.timeline, e.created_at, e.updated_at,
+               a.name AS agent_name, a.company AS agent_company
+        FROM agent_engagements e
+        JOIN agents a ON a.id = e.agent_id
+        WHERE e.user_id = $1
       `;
       if (statusRaw) {
         params.push(statusRaw);
-        sql += ` AND status = $${params.length}`;
+        sql += ` AND e.status = $${params.length}`;
       }
-      sql += ` ORDER BY updated_at DESC`;
+      sql += ` ORDER BY e.updated_at DESC`;
 
       const result = await pool.query<EngagementRow>(sql, params);
-      res.json(apiResponse(result.rows.map(toEngagement)));
+      res.json(apiResponse(result.rows.map(toEngagementWithContext)));
       return;
     }
 
@@ -225,18 +269,21 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
 
     const params: unknown[] = [agentResult.rows[0].id];
     let sql = `
-      SELECT ${ENGAGEMENT_SELECT}
-      FROM agent_engagements
-      WHERE agent_id = $1
+      SELECT e.id, e.agent_id, e.user_id, e.status, e.business_description,
+             e.expansion_goals, e.timeline, e.created_at, e.updated_at,
+             u.email AS requester_email
+      FROM agent_engagements e
+      JOIN users u ON u.id = e.user_id
+      WHERE e.agent_id = $1
     `;
     if (statusRaw) {
       params.push(statusRaw);
-      sql += ` AND status = $${params.length}`;
+      sql += ` AND e.status = $${params.length}`;
     }
-    sql += ` ORDER BY updated_at DESC`;
+    sql += ` ORDER BY e.updated_at DESC`;
 
     const result = await pool.query<EngagementRow>(sql, params);
-    res.json(apiResponse(result.rows.map(toEngagement)));
+    res.json(apiResponse(result.rows.map(toEngagementWithContext)));
   } catch (err) {
     console.error('[engagements] list error:', err);
     res.status(500).json(apiError('Internal server error'));
@@ -317,6 +364,26 @@ router.put('/:id/respond', requireAuth, async (req: Request, res: Response) => {
 
       await client.query('COMMIT');
       res.json(apiResponse(toEngagement(updated.rows[0])));
+
+      void safeNotify({
+        userId: engagement.user_id,
+        type:
+          response === 'accepted'
+            ? 'engagement_accepted'
+            : 'engagement_declined',
+        title:
+          response === 'accepted'
+            ? 'Introduction accepted'
+            : 'Introduction declined',
+        message:
+          response === 'accepted'
+            ? 'An agent has accepted your introduction request.'
+            : 'An agent has declined your introduction request.',
+        metadata: {
+          engagementId: engagement.id,
+          agentId: engagement.agent_id,
+        },
+      });
     } catch (err) {
       await client.query('ROLLBACK');
       throw err;
@@ -394,6 +461,33 @@ router.put('/:id/status', requireAuth, async (req: Request, res: Response) => {
     );
 
     res.json(apiResponse(toEngagement(updated.rows[0])));
+
+    const actingUserId = req.user!.id;
+    const requesterUserId = engagement.user_id;
+    const recipientUserId =
+      actingUserId === requesterUserId ? agentUserId : requesterUserId;
+
+    if (recipientUserId) {
+      void safeNotify({
+        userId: recipientUserId,
+        type:
+          nextStatus === 'active'
+            ? 'engagement_active'
+            : 'engagement_completed',
+        title:
+          nextStatus === 'active'
+            ? 'Engagement is now active'
+            : 'Engagement completed',
+        message:
+          nextStatus === 'active'
+            ? 'Your engagement has been marked as active.'
+            : 'Your engagement has been marked as complete. Consider leaving a review.',
+        metadata: {
+          engagementId: engagement.id,
+          agentId: engagement.agent_id,
+        },
+      });
+    }
   } catch (err) {
     console.error('[engagements] status error:', err);
     res.status(500).json(apiError('Internal server error'));

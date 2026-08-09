@@ -1,4 +1,4 @@
-import { type AgentEngagement } from '@gexis/gexis-core';
+import { type AgentEngagement, type EngagementWithContext } from '@gexis/gexis-core';
 
 import { ApiError, getApiUrl } from '@/services/api';
 import { getStoredAccessToken } from '@/services/tokenStorage';
@@ -63,7 +63,7 @@ export async function createEngagement(
 export async function listEngagements(
   role: 'requester' | 'agent',
   status?: string
-): Promise<AgentEngagement[]> {
+): Promise<EngagementWithContext[]> {
   const headers = await authHeaders();
   const qs = new URLSearchParams({ role });
   if (status) qs.set('status', status);
@@ -71,7 +71,7 @@ export async function listEngagements(
     `${getApiUrl()}/api/engagements?${qs.toString()}`,
     { method: 'GET', headers }
   );
-  const json = await parseJson<ApiEnvelope<AgentEngagement[]>>(response);
+  const json = await parseJson<ApiEnvelope<EngagementWithContext[]>>(response);
   return json.data;
 }
 

@@ -30,7 +30,7 @@ import { ApiError } from '@/services/api';
 import { useAuth } from '@/services/auth';
 import { createEngagement } from '@/services/engagements';
 import { listCountries } from '@/services/geographies';
-import { getAgentReviews } from '@/services/reviews';
+import { getAgentReviews, submitReview } from '@/services/reviews';
 import {
   addToShortlist,
   getShortlist,
@@ -94,6 +94,11 @@ export default function AgentProfileScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [reviewRating, setReviewRating] = useState('5');
+  const [reviewText, setReviewText] = useState('');
+  const [reviewBusy, setReviewBusy] = useState(false);
+  const [reviewError, setReviewError] = useState<string | null>(null);
+  const [reviewSuccess, setReviewSuccess] = useState<string | null>(null);
 
   useEffect(() => {
     if (!agentId) {
@@ -238,6 +243,38 @@ export default function AgentProfileScreen() {
       setShortlisted(was);
     } finally {
       setShortlistBusy(false);
+    }
+  };
+
+  const onSubmitReview = async () => {
+    if (!agentId || reviewBusy) return;
+    const rating = Number(reviewRating);
+    if (!Number.isFinite(rating) || rating < 1 || rating > 5) {
+      setReviewError('Rating must be between 1 and 5');
+      return;
+    }
+    setReviewBusy(true);
+    setReviewError(null);
+    try {
+      const created = await submitReview(agentId, {
+        rating,
+        reviewText: reviewText.trim() || undefined,
+      });
+      setReviews((prev) => [created, ...prev]);
+      setReviewText('');
+      setReviewSuccess('Review submitted');
+      const refreshed = await getAgentById(agentId);
+      setAgent(refreshed);
+    } catch (err) {
+      setReviewError(
+        err instanceof ApiError
+          ? err.message === 'no_completed_engagement'
+            ? 'You can only review after a completed engagement'
+            : err.message
+          : 'Failed to submit review'
+      );
+    } finally {
+      setReviewBusy(false);
     }
   };
 
@@ -425,6 +462,51 @@ export default function AgentProfileScreen() {
                   </View>
                 ))
               )}
+
+              {isAuthenticated ? (
+                <View style={styles.reviewForm} testID="review-form">
+                  <Text style={styles.sectionTitle}>Leave a review</Text>
+                  <Text style={styles.fieldLabel}>Rating (1–5)</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={reviewRating}
+                    onChangeText={setReviewRating}
+                    keyboardType="numeric"
+                    editable={!reviewBusy}
+                  />
+                  <Text style={styles.fieldLabel}>Review</Text>
+                  <TextInput
+                    style={[styles.input, styles.textArea]}
+                    value={reviewText}
+                    onChangeText={setReviewText}
+                    placeholder="Share your experience..."
+                    placeholderTextColor="#9a9a96"
+                    multiline
+                    editable={!reviewBusy}
+                  />
+                  {reviewError ? (
+                    <Text style={styles.error}>{reviewError}</Text>
+                  ) : null}
+                  {reviewSuccess ? (
+                    <Text style={styles.successText}>{reviewSuccess}</Text>
+                  ) : null}
+                  <Pressable
+                    testID="submit-review-btn"
+                    style={[
+                      styles.primaryBtn,
+                      reviewBusy && styles.primaryBtnDisabled,
+                    ]}
+                    disabled={reviewBusy}
+                    onPress={() => void onSubmitReview()}
+                  >
+                    {reviewBusy ? (
+                      <ActivityIndicator color="#fff" />
+                    ) : (
+                      <Text style={styles.primaryBtnText}>Submit Review</Text>
+                    )}
+                  </Pressable>
+                </View>
+              ) : null}
             </View>
           </View>
 
@@ -779,6 +861,15 @@ const styles = StyleSheet.create({
   reviewDate: {
     fontSize: 12,
     color: '#6b6b6b',
+  },
+  reviewForm: {
+    marginTop: 12,
+    gap: 8,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#e2e2de',
+    borderRadius: 10,
+    padding: 14,
   },
   primaryBtn: {
     backgroundColor: '#1a1a1a',

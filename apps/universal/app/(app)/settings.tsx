@@ -1,3 +1,4 @@
+import { Link } from 'expo-router';
 import { useState } from 'react';
 import {
   ActivityIndicator,
@@ -123,6 +124,20 @@ export default function SettingsScreen() {
           </View>
         ) : null}
 
+        <View style={styles.card}>
+          <Text style={styles.cardLabel}>MARKETPLACE</Text>
+          <Link href="/engagements" asChild>
+            <Pressable style={styles.linkRow}>
+              <Text style={styles.linkText}>My Engagements</Text>
+            </Pressable>
+          </Link>
+          <Link href="/notifications" asChild>
+            <Pressable style={styles.linkRow}>
+              <Text style={styles.linkText}>Notifications</Text>
+            </Pressable>
+          </Link>
+        </View>
+
         <Pressable
           style={styles.logoutBtn}
           onPress={() => {
@@ -233,6 +248,14 @@ const styles = StyleSheet.create({
   error: {
     color: '#d96b6b',
     fontSize: 12,
+    fontWeight: '600',
+  },
+  linkRow: {
+    paddingVertical: 10,
+  },
+  linkText: {
+    color: '#8eb6ff',
+    fontSize: 15,
     fontWeight: '600',
   },
   logoutBtn: {

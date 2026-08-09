@@ -113,6 +113,13 @@ export interface AgentEngagement {
   updatedAt: string;
 }
 
+/** Extended engagement with joined context for display. */
+export interface EngagementWithContext extends AgentEngagement {
+  agentName?: string;
+  agentCompany?: string | null;
+  requesterEmail?: string;
+}
+
 /** Agent review. */
 export interface AgentReview {
   id: string;
@@ -129,6 +136,28 @@ export interface ShortlistEntry {
   id: string;
   userId: string;
   agentId: string;
+  createdAt: string;
+}
+
+export const NOTIFICATION_TYPES = [
+  'engagement_requested',
+  'engagement_accepted',
+  'engagement_declined',
+  'engagement_active',
+  'engagement_completed',
+] as const;
+
+export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
+
+/** Notification as returned by the API. */
+export interface AppNotification {
+  id: string;
+  userId: string;
+  type: NotificationType;
+  title: string;
+  message: string | null;
+  read: boolean;
+  metadata: Record<string, unknown> | null;
   createdAt: string;
 }
 
