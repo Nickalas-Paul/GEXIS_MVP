@@ -1,0 +1,114 @@
+/**
+ * Market signals routes (public Layer 2 data).
+ */
+
+import { Router, Request, Response } from 'express';
+import { pool } from '../config/database';
+import { apiError, apiResponse, toCamelCase } from '../utils/response';
+
+const router = Router();
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function parseActive(raw: unknown): boolean {
+  if (raw == null || raw === '') return true;
+  if (typeof raw !== 'string') return true;
+  const v = raw.trim().toLowerCase();
+  if (v === 'false' || v === '0' || v === 'no') return false;
+  return true;
+}
+
+function parseLimit(raw: unknown): number {
+  const n = typeof raw === 'string' ? Number.parseInt(raw, 10) : Number(raw);
+  if (!Number.isFinite(n) || n < 1) return 10;
+  return Math.min(n, 100);
+}
+
+router.get('/', async (req: Request, res: Response) => {
+  try {
+    const geographyRaw = req.query.geographyId;
+    if (typeof geographyRaw !== 'string' || !geographyRaw.trim()) {
+      res.status(400).json(apiError('geographyId is required (UUID or ISO3)'));
+      return;
+    }
+
+    const geographyId = geographyRaw.trim();
+    const isIso = !UUID_RE.test(geographyId);
+    const activeOnly = parseActive(req.query.active);
+    const limit = parseLimit(req.query.limit);
+
+    const geoResult = await pool.query<{ id: string; iso_code: string | null }>(
+      `
+      SELECT id, iso_code
+      FROM geographies
+      WHERE region_type = 'country'
+        AND ${isIso ? 'upper(iso_code) = upper($1)' : 'id = $1::uuid'}
+      LIMIT 1
+      `,
+      [geographyId]
+    );
+
+    if (geoResult.rows.length === 0) {
+      res.status(404).json(apiError('Geography not found'));
+      return;
+    }
+
+    const geo = geoResult.rows[0];
+
+    const activeClause = activeOnly
+      ? `AND resolved = false AND (expires_at IS NULL OR expires_at > NOW())`
+      : '';
+
+    const signalsResult = await pool.query(
+      `
+      SELECT
+        id,
+        source,
+        signal_type,
+        title,
+        description,
+        probability,
+        severity,
+        direction,
+        affected_dimensions,
+        event_url,
+        fetched_at,
+        expires_at
+      FROM market_signals
+      WHERE geography_id = $1
+      ${activeClause}
+      ORDER BY severity DESC NULLS LAST, probability DESC NULLS LAST, fetched_at DESC
+      LIMIT $2
+      `,
+      [geo.id, limit]
+    );
+
+    const signals = signalsResult.rows.map((row) => {
+      const camel = toCamelCase(row as Record<string, unknown>);
+      // Ensure numeric JSON types for probability/severity
+      if (camel.probability != null) {
+        camel.probability = Number(camel.probability);
+      }
+      if (camel.severity != null) {
+        camel.severity = Number(camel.severity);
+      }
+      return camel;
+    });
+
+    res.json({
+      success: true,
+      ...apiResponse({
+        signals,
+        count: signals.length,
+        geographyId: geo.id,
+        isoCode: geo.iso_code,
+      }),
+    });
+  } catch (err) {
+    console.error('[signals] list error:', err);
+    res.status(500).json(apiError('Internal server error'));
+  }
+});
+
+export default router;
