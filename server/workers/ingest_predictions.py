@@ -143,7 +143,7 @@ SIGNAL_RULES: list[tuple[tuple[str, ...], str, list[str], str]] = [
             "martial law",
         ),
         "political_instability",
-        ["regulatoryEase", "trajectory"],
+        ["regulatoryEase"],
         "negative",
     ),
     (
@@ -172,7 +172,7 @@ SIGNAL_RULES: list[tuple[tuple[str, ...], str, list[str], str]] = [
             "fed rate",
         ),
         "economic_policy",
-        ["marketSizeAndGrowth", "trajectory"],
+        ["marketSizeAndGrowth"],
         "neutral",
     ),
 ]
@@ -604,7 +604,7 @@ def seed_signals(cursor, iso_map: dict[str, str]) -> int:
             "description": "Seed macro signal for market-size and trajectory projections.",
             "probability": 0.36,
             "direction": "neutral",
-            "affected_dimensions": ["marketSizeAndGrowth", "trajectory"],
+            "affected_dimensions": ["marketSizeAndGrowth"],
             "event_url": "https://polymarket.com/",
             "expires_at": now + timedelta(days=170),
         },

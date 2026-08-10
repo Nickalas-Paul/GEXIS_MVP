@@ -24,14 +24,18 @@ from config import LOGS_DIR
 from country_aliases import NAME_TO_ISO
 from db import get_cursor, load_geography_iso_map
 from notify_signals import trigger_signal_notifications
+from signal_common import iso_from_country_label
 
 SOURCE = "gdelt"
 SEED_SOURCE = "gdelt_seed"
 GDELT_URL = "https://api.gdeltproject.org/api/v2/doc/doc"
 REQUEST_TIMEOUT_SEC = 60
-QUERY_DELAY_SEC = 2.5
+QUERY_DELAY_SEC = 5.0
+MAXRECORDS = 25
+RATE_LIMIT_BACKOFF_SEC = 30
 
 # (query, signal_type, direction, affected_dimensions)
+# trajectory omitted — not in BASE_DIMENSION_KEYS for projection adjustments.
 GDELT_QUERIES: list[tuple[str, str, str, list[str]]] = [
     (
         '"trade tariff" OR "import duty" OR "tariff increase"',
@@ -61,7 +65,7 @@ GDELT_QUERIES: list[tuple[str, str, str, list[str]]] = [
         '"political crisis" OR "coup" OR "civil unrest" OR "political instability"',
         "political_instability",
         "negative",
-        ["regulatoryEase", "trajectory"],
+        ["regulatoryEase"],
     ),
     (
         '"currency devaluation" OR "currency crisis"',
@@ -79,7 +83,7 @@ GDELT_QUERIES: list[tuple[str, str, str, list[str]]] = [
         '"economic reform" OR "investment incentive" OR "tax incentive"',
         "economic_policy",
         "positive",
-        ["marketSizeAndGrowth", "trajectory"],
+        ["marketSizeAndGrowth"],
     ),
 ]
 
@@ -184,32 +188,50 @@ def iso_from_url(url: str | None) -> Optional[str]:
 
 
 def fetch_gdelt(query: str) -> list[dict[str, Any]]:
-    response = requests.get(
-        GDELT_URL,
-        params={
-            "query": query,
-            "mode": "ArtList",
-            "maxrecords": 50,
-            "format": "json",
-            "timespan": "7d",
-        },
-        headers={"User-Agent": "GEXIS-MVP/0.1 (data-engine)"},
-        timeout=REQUEST_TIMEOUT_SEC,
-    )
-    response.raise_for_status()
-    # GDELT sometimes returns empty body or non-JSON on no results
-    text = (response.text or "").strip()
-    if not text:
-        return []
-    try:
-        payload = response.json()
-    except ValueError:
-        logger.warning("GDELT non-JSON response for query %r (len=%s)", query, len(text))
-        return []
-    articles = payload.get("articles") if isinstance(payload, dict) else None
-    if not isinstance(articles, list):
-        return []
-    return [a for a in articles if isinstance(a, dict)]
+    """Fetch ArtList JSON; on HTTP 429 wait and retry once."""
+    params = {
+        "query": query,
+        "mode": "ArtList",
+        "maxrecords": MAXRECORDS,
+        "format": "json",
+        "timespan": "7d",
+    }
+    headers = {"User-Agent": "GEXIS-MVP/0.1 (data-engine)"}
+
+    for attempt in range(2):
+        response = requests.get(
+            GDELT_URL,
+            params=params,
+            headers=headers,
+            timeout=REQUEST_TIMEOUT_SEC,
+        )
+        if response.status_code == 429:
+            if attempt == 0:
+                logger.warning(
+                    "GDELT 429 for query %r — backing off %ss then retrying once",
+                    query,
+                    RATE_LIMIT_BACKOFF_SEC,
+                )
+                time.sleep(RATE_LIMIT_BACKOFF_SEC)
+                continue
+            logger.warning("GDELT still 429 after retry for query %r — skipping", query)
+            return []
+        response.raise_for_status()
+        text = (response.text or "").strip()
+        if not text:
+            return []
+        try:
+            payload = response.json()
+        except ValueError:
+            logger.warning(
+                "GDELT non-JSON response for query %r (len=%s)", query, len(text)
+            )
+            return []
+        articles = payload.get("articles") if isinstance(payload, dict) else None
+        if not isinstance(articles, list):
+            return []
+        return [a for a in articles if isinstance(a, dict)]
+    return []
 
 
 def title_similarity(a: str, b: str) -> float:
@@ -354,7 +376,7 @@ def seed_gdelt_signals(cursor, iso_map: dict[str, str]) -> int:
             "title": "Political crisis in Brazil raises market uncertainty over fiscal reforms",
             "description": "Seed: political instability signal for LatAm entry planning.",
             "direction": "negative",
-            "dims": ["regulatoryEase", "trajectory"],
+            "dims": ["regulatoryEase"],
         },
         {
             "isos": ["TUR", "ARG"],
@@ -378,7 +400,7 @@ def seed_gdelt_signals(cursor, iso_map: dict[str, str]) -> int:
             "title": "Southeast Asian governments expand investment incentives and tax incentives",
             "description": "Seed: positive economic reform / incentive packages.",
             "direction": "positive",
-            "dims": ["marketSizeAndGrowth", "trajectory"],
+            "dims": ["marketSizeAndGrowth"],
         },
         {
             "isos": ["SAU", "ARE"],
@@ -386,7 +408,7 @@ def seed_gdelt_signals(cursor, iso_map: dict[str, str]) -> int:
             "title": "Gulf states announce economic reform packages to attract foreign investment",
             "description": "Seed: investment-incentive policy signal.",
             "direction": "positive",
-            "dims": ["marketSizeAndGrowth", "trajectory"],
+            "dims": ["marketSizeAndGrowth"],
         },
     ]
 
@@ -441,12 +463,18 @@ def ingest() -> None:
                 if not title:
                     continue
                 url = article.get("url")
-                blob = f"{title} {article.get('seendate') or ''}"
-                isos = extract_iso_codes(title)
-                tld_iso = iso_from_url(url if isinstance(url, str) else None)
-                if tld_iso and tld_iso not in isos:
-                    # Prefer title countries; use TLD only if none found
-                    if not isos:
+                # Prefer API sourcecountry, then title extraction, then URL TLD.
+                isos: list[str] = []
+                src_country = article.get("sourcecountry")
+                if isinstance(src_country, str) and src_country.strip():
+                    mapped = iso_from_country_label(src_country)
+                    if mapped:
+                        isos = [mapped]
+                if not isos:
+                    isos = extract_iso_codes(title)
+                if not isos:
+                    tld_iso = iso_from_url(url if isinstance(url, str) else None)
+                    if tld_iso:
                         isos = [tld_iso]
                 if not isos:
                     continue
