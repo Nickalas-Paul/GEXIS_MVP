@@ -107,7 +107,7 @@ export function signalTypeIcon(signalType: string): string {
 }
 
 export function sourceDisplayLabel(source: string): string {
-    const map: Record<string, string> = {
+  const map: Record<string, string> = {
     polymarket: 'Polymarket',
     kalshi: 'Kalshi',
     metaculus: 'Metaculus',
@@ -115,6 +115,11 @@ export function sourceDisplayLabel(source: string): string {
     gdelt_seed: 'GDELT',
     seed: 'Seed',
     acled: 'ACLED',
+    gdacs: 'GDACS',
+    ecb_fx: 'ECB',
+    opensanctions: 'OpenSanctions',
+    state_dept: 'US State Dept',
+    newsapi: 'News',
   };
   return map[source] ?? source;
 }
